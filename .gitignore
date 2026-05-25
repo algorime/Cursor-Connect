@@ -1,0 +1,5 @@
+.sources/
+harness-capture/captures/
+harness-capture/server.log
+__pycache__/
+*.pyc

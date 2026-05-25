@@ -2,10 +2,10 @@ import type { AuthHandoffResponse, RequestScopedAuthContext } from '@codex-auth-
 
 import { PendingAuthQueue } from '../auth-handoff/pending-auth-requests.js';
 import { fakeCodexEventsForScenario, type FakeCodexScenario } from './fake-codex-upstream.js';
-import { parseSseEvents } from '../protocol/sse.js';
+import { parseSseEventStream } from '../protocol/sse.js';
 
 export interface CodexUpstreamAttemptResult {
-	events: Array<Record<string, unknown>>;
+	eventStream: AsyncIterable<Record<string, unknown>>;
 	authContext: RequestScopedAuthContext;
 	refreshedAfter401: boolean;
 }
@@ -28,14 +28,14 @@ export class CodexUpstreamClient {
 			if (this.options.scenario === 'auth_401_then_success') {
 				const refreshed = await this.options.authQueue.requestAuth('forced_refresh_after_401');
 				return {
-					events: fakeCodexEventsForScenario('success_text'),
+					eventStream: eventsToAsyncIterable(fakeCodexEventsForScenario('success_text')),
 					authContext: unwrapAuth(refreshed),
 					refreshedAfter401: true
 				};
 			}
 
 			return {
-				events: fakeCodexEventsForScenario(this.options.scenario),
+				eventStream: eventsToAsyncIterable(fakeCodexEventsForScenario(this.options.scenario)),
 				authContext: context,
 				refreshedAfter401: false
 			};
@@ -53,7 +53,7 @@ export class CodexUpstreamClient {
 			}
 
 			return {
-				events: parseSseEvents(await retried.response.text()),
+				eventStream: parseSseEventStream(retried.response.body),
 				authContext: refreshedContext,
 				refreshedAfter401: true
 			};
@@ -64,7 +64,7 @@ export class CodexUpstreamClient {
 		}
 
 		return {
-			events: parseSseEvents(await first.response.text()),
+			eventStream: parseSseEventStream(first.response.body),
 			authContext: context,
 			refreshedAfter401: false
 		};
@@ -74,6 +74,7 @@ export class CodexUpstreamClient {
 		request: Record<string, unknown>,
 		context: RequestScopedAuthContext
 	): Promise<{ ok: boolean; status: number; response: Response }> {
+		const sessionHeaders = sessionHeadersFromRequest(request);
 		const response = await (this.options.fetchImpl ?? fetch)(
 			this.options.responsesUrl ?? 'https://chatgpt.com/backend-api/codex/responses',
 			{
@@ -83,6 +84,8 @@ export class CodexUpstreamClient {
 					accept: 'text/event-stream',
 					'content-type': 'application/json',
 					originator: 'codex_cli_rs',
+					'User-Agent': 'codex_cli_rs/0.130.0 cursor-auth-extension/0.1',
+					...sessionHeaders,
 					...context.upstreamHeaders
 				},
 				body: JSON.stringify(request)
@@ -95,6 +98,30 @@ export class CodexUpstreamClient {
 			response
 		};
 	}
+}
+
+async function* eventsToAsyncIterable(events: Array<Record<string, unknown>>): AsyncIterable<Record<string, unknown>> {
+	for (const event of events) {
+		yield event;
+	}
+}
+
+function sessionHeadersFromRequest(request: Record<string, unknown>): Record<string, string> {
+	const sessionId = typeof request.prompt_cache_key === 'string' && request.prompt_cache_key
+		? request.prompt_cache_key
+		: null;
+
+	if (!sessionId) {
+		return {};
+	}
+
+	return {
+		session_id: sessionId,
+		'session-id': sessionId,
+		thread_id: sessionId,
+		'thread-id': sessionId,
+		'x-client-request-id': sessionId
+	};
 }
 
 function unwrapAuth(response: AuthHandoffResponse): RequestScopedAuthContext {

@@ -2,6 +2,16 @@ import type { SafeErrorCategory } from '@codex-auth-ext/shared';
 
 import { resolveModelRoute, type ModelRoutingSettings, type ResolvedModelRoute } from '../models/codex-model-policy.js';
 
+const CODEX_RESPONSES_UNSUPPORTED_PARAMS = new Set([
+	'frequency_penalty',
+	'max_output_tokens',
+	'max_tokens',
+	'presence_penalty',
+	'temperature',
+	'top_logprobs',
+	'top_p'
+]);
+
 export type CursorRequestAdapterResult =
 	| {
 			ok: true;
@@ -19,7 +29,8 @@ export type CursorRequestAdapterResult =
 
 export function adaptCursorRequestToCodexResponses(
 	body: unknown,
-	settings: ModelRoutingSettings
+	settings: ModelRoutingSettings,
+	headers: Record<string, string | string[] | undefined> = {}
 ): CursorRequestAdapterResult {
 	if (!isRecord(body)) {
 		return adapterError('invalid_request', 'invalid_json', 'request body must be a JSON object');
@@ -42,19 +53,18 @@ export function adaptCursorRequestToCodexResponses(
 		return adapterError('protocol', 'unsupported_request_shape', 'unsupported Cursor request shape');
 	}
 
-	if (requestShape === 'chat_completions' && model !== 'gpt-5.4') {
-		return adapterError('protocol', 'diagnostic_shape_only', 'chat completions shape is diagnostic-only');
-	}
+	const upstreamRequest =
+		requestShape === 'chat_completions'
+			? chatCompletionsToResponses(body)
+			: responsesPassthrough(body);
+	const sessionIdentity = readSessionIdentity(body, headers);
 
-	const upstreamRequest: Record<string, unknown> = {
-		...body,
-		model: route.upstreamModelId,
-		stream: body.stream !== false
-	};
-
-	if (requestShape === 'chat_completions') {
-		upstreamRequest.input = body.messages;
-		delete upstreamRequest.messages;
+	upstreamRequest.model = route.upstreamModelId;
+	upstreamRequest.stream = true;
+	upstreamRequest.parallel_tool_calls = true;
+	upstreamRequest.store = false;
+	if (sessionIdentity && typeof upstreamRequest.prompt_cache_key !== 'string') {
+		upstreamRequest.prompt_cache_key = sessionIdentity;
 	}
 
 	return {
@@ -63,6 +73,312 @@ export function adaptCursorRequestToCodexResponses(
 		requestShape,
 		upstreamRequest
 	};
+}
+
+function responsesPassthrough(payload: Record<string, unknown>): Record<string, unknown> {
+	const out = { ...payload };
+
+	delete out.stream_options;
+	delete out.metadata;
+	delete out.user;
+	delete out.prompt_cache_retention;
+
+	for (const key of CODEX_RESPONSES_UNSUPPORTED_PARAMS) {
+		delete out[key];
+	}
+
+	if (!out.instructions) {
+		out.instructions = defaultInstructions();
+	}
+
+	if (typeof out.input === 'string') {
+		out.input = [
+			{
+				role: 'user',
+				content: [{ type: 'input_text', text: out.input }]
+			}
+		];
+		return out;
+	}
+
+	if (Array.isArray(out.input)) {
+		const { instructions, input } = normalizeResponsesInput(out.input);
+
+		if (instructions.length > 0) {
+			out.instructions =
+				out.instructions === defaultInstructions()
+					? instructions.join('\n\n')
+					: [out.instructions, ...instructions].join('\n\n');
+		}
+
+		out.input = input;
+	}
+
+	return out;
+}
+
+function readSessionIdentity(
+	payload: Record<string, unknown>,
+	headers: Record<string, string | string[] | undefined>
+): string | null {
+	if (isRecord(payload.metadata)) {
+		for (const key of ['cursorConversationId', 'conversation_id', 'thread_id', 'session_id']) {
+			const value = payload.metadata[key];
+			if (typeof value === 'string' && value) {
+				return value;
+			}
+		}
+	}
+
+	for (const key of [
+		'x-cursor-conversation-id',
+		'x-client-request-id',
+		'thread-id',
+		'thread_id',
+		'session-id',
+		'session_id'
+	]) {
+		const value = headerValue(headers, key);
+		if (value) {
+			return value;
+		}
+	}
+
+	return typeof payload.user === 'string' && payload.user ? payload.user : null;
+}
+
+function headerValue(headers: Record<string, string | string[] | undefined>, key: string): string | null {
+	for (const [actual, value] of Object.entries(headers)) {
+		if (actual.toLowerCase() !== key.toLowerCase()) {
+			continue;
+		}
+
+		if (Array.isArray(value)) {
+			return value.find((item) => item) ?? null;
+		}
+
+		return value || null;
+	}
+
+	return null;
+}
+
+function chatCompletionsToResponses(payload: Record<string, unknown>): Record<string, unknown> {
+	const messages = Array.isArray(payload.messages) ? payload.messages : [];
+	const instructions: string[] = [];
+	const input: Array<Record<string, unknown>> = [];
+
+	for (const message of messages) {
+		if (!isRecord(message)) {
+			continue;
+		}
+
+		const role = message.role;
+		const content = message.content;
+
+		if (role === 'system' || role === 'developer') {
+			const text = contentToText(content);
+			if (text) {
+				instructions.push(text);
+			}
+			continue;
+		}
+
+		if (role === 'tool') {
+			input.push({
+				type: 'function_call_output',
+				call_id: message.tool_call_id,
+				output: contentToText(content),
+				status: 'completed'
+			});
+			continue;
+		}
+
+		if ((role === 'user' || role === 'assistant') && content !== undefined) {
+			input.push({
+				role,
+				content: normalizeContentParts(content, role)
+			});
+		}
+
+		const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+		for (const toolCall of toolCalls) {
+			if (!isRecord(toolCall)) {
+				continue;
+			}
+			const fn = isRecord(toolCall.function) ? toolCall.function : {};
+			input.push({
+				type: 'function_call',
+				call_id: toolCall.id,
+				name: fn.name,
+				arguments: fn.arguments ?? ''
+			});
+		}
+	}
+
+	const out: Record<string, unknown> = {
+		model: payload.model,
+		instructions: instructions.length > 0 ? instructions.join('\n\n') : defaultInstructions(),
+		input,
+		tools: transformTools(payload.tools),
+		tool_choice: transformToolChoice(payload.tool_choice)
+	};
+
+	if (isRecord(payload.reasoning)) {
+		out.reasoning = payload.reasoning;
+	}
+	if (Array.isArray(payload.include)) {
+		out.include = payload.include;
+	}
+	if (payload.service_tier !== undefined && payload.service_tier !== null) {
+		out.service_tier = payload.service_tier;
+	}
+
+	return out;
+}
+
+function normalizeResponsesInput(items: unknown[]): {
+	instructions: string[];
+	input: Array<Record<string, unknown>>;
+} {
+	const instructions: string[] = [];
+	const input: Array<Record<string, unknown>> = [];
+
+	for (const item of items) {
+		if (!isRecord(item)) {
+			continue;
+		}
+
+		const role = item.role;
+
+		if (role === 'system' || role === 'developer') {
+			const text = contentToText(item.content);
+			if (text) {
+				instructions.push(text);
+			}
+			continue;
+		}
+
+		if (role === 'user' || role === 'assistant') {
+			input.push({
+				...item,
+				content: normalizeContentParts(item.content, role)
+			});
+			continue;
+		}
+
+		input.push({ ...item });
+	}
+
+	return { instructions, input };
+}
+
+function normalizeContentParts(content: unknown, role: unknown): Array<Record<string, unknown>> {
+	if (Array.isArray(content)) {
+		return content.filter(isRecord).map((part) => normalizeContentPart(part, role));
+	}
+
+	return [
+		{
+			type: role === 'assistant' ? 'output_text' : 'input_text',
+			text: contentToText(content)
+		}
+	];
+}
+
+function normalizeContentPart(part: Record<string, unknown>, role: unknown): Record<string, unknown> {
+	const type = part.type;
+
+	if (type === 'input_text' || type === 'output_text') {
+		return { ...part };
+	}
+
+	if (type === 'text') {
+		return {
+			type: role === 'assistant' ? 'output_text' : 'input_text',
+			text: String(part.text ?? '')
+		};
+	}
+
+	return { ...part };
+}
+
+function contentToText(content: unknown): string {
+	if (content === null || content === undefined) {
+		return '';
+	}
+
+	if (typeof content === 'string') {
+		return content;
+	}
+
+	if (Array.isArray(content)) {
+		return content
+			.map((part) => {
+				if (!isRecord(part)) {
+					return String(part);
+				}
+				if (part.type === 'text' || part.type === 'input_text' || part.type === 'output_text') {
+					return String(part.text ?? '');
+				}
+				if (part.type === 'image_url') {
+					return '[image]';
+				}
+				return `[${String(part.type ?? 'unknown')}]`;
+			})
+			.filter(Boolean)
+			.join('\n');
+	}
+
+	return String(content);
+}
+
+function transformTools(tools: unknown): Array<Record<string, unknown>> {
+	if (!Array.isArray(tools)) {
+		return [];
+	}
+
+	const out: Array<Record<string, unknown>> = [];
+
+	for (const tool of tools) {
+		if (!isRecord(tool)) {
+			continue;
+		}
+
+		if (isRecord(tool.function)) {
+			out.push({
+				type: 'function',
+				name: tool.function.name,
+				description: tool.function.description,
+				parameters: tool.function.parameters,
+				strict: false
+			});
+			continue;
+		}
+
+		if (tool.name) {
+			out.push({ ...tool });
+		}
+	}
+
+	return out;
+}
+
+function transformToolChoice(toolChoice: unknown): unknown {
+	if (!isRecord(toolChoice) || toolChoice.type !== 'function' || !isRecord(toolChoice.function)) {
+		return toolChoice;
+	}
+
+	return toolChoice.function.name
+		? {
+				type: 'function',
+				name: toolChoice.function.name
+			}
+		: toolChoice;
+}
+
+function defaultInstructions(): string {
+	return "You are a coding assistant running through Cursor. Follow the user's request directly.";
 }
 
 function adapterError(

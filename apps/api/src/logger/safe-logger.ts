@@ -43,7 +43,17 @@ export function emitSafeLog(event: SafeLogEvent): void {
 		category: event.category,
 		message: redactSecrets(event.message),
 		port: event.port,
-		exitCode: event.exitCode
+		exitCode: event.exitCode,
+		method: event.method,
+		path: event.path,
+		hasAuthHeader: event.hasAuthHeader,
+		userAgent: event.userAgent,
+		requestId: event.requestId,
+		statusCode: event.statusCode,
+		errorCategory: event.errorCategory,
+		errorCode: event.errorCode,
+		upstreamStatus: event.upstreamStatus,
+		refreshedAfter401: event.refreshedAfter401
 	});
 
 	process.stdout.write(`${JSON.stringify(payload)}\n`);

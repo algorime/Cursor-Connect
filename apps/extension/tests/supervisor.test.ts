@@ -380,6 +380,7 @@ describe('RuntimeSupervisor', () => {
 			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
 			credentials: new InMemoryCredentialStore(),
 			logger: new SafeRuntimeLogger({ write: () => {} }),
+			usageDbPath: '/tmp/codex-auth-ext-usage.sqlite',
 			spawner: {
 				spawn(request) {
 					capturedEnv = request.env;
@@ -396,5 +397,6 @@ describe('RuntimeSupervisor', () => {
 
 		expect(snapshot.phase).toBe('ready');
 		expect(capturedEnv?.CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND).toBe('1');
+		expect(capturedEnv?.CODEX_AUTH_EXT_USAGE_DB_PATH).toBe('/tmp/codex-auth-ext-usage.sqlite');
 	});
 });

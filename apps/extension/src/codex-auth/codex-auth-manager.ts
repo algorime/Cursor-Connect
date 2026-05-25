@@ -17,6 +17,7 @@ export interface CodexTokenSet {
 	idToken?: string;
 	expiresAt: number;
 	accountId?: string;
+	fedramp?: boolean;
 	email?: string;
 }
 
@@ -86,7 +87,7 @@ export class OpenAICodexOAuthClient implements CodexOAuthClient {
 		url.searchParams.set('response_type', 'code');
 		url.searchParams.set('client_id', this.clientId);
 		url.searchParams.set('redirect_uri', redirectUri);
-		url.searchParams.set('scope', 'openid profile email offline_access');
+		url.searchParams.set('scope', 'openid profile email offline_access api.connectors.read api.connectors.invoke');
 		url.searchParams.set('state', state);
 		url.searchParams.set('code_challenge', codeChallenge);
 		url.searchParams.set('code_challenge_method', 'S256');
@@ -159,6 +160,7 @@ export class OpenAICodexOAuthClient implements CodexOAuthClient {
 			idToken,
 			expiresAt: Date.now() + expiresIn * 1000,
 			accountId: readAccountIdClaim(claims),
+			fedramp: readFedrampClaim(claims),
 			email: stringField(claims.email)
 		};
 	}
@@ -239,6 +241,15 @@ export class CodexAuthManager {
 
 		const shouldRefresh = options.forceRefresh || tokens.expiresAt - Date.now() <= REFRESH_SKEW_MS;
 		const freshTokens = shouldRefresh ? await this.refreshTokens(tokens, metadata) : tokens;
+		const accountId = freshTokens.accountId;
+
+		if (!accountId) {
+			await this.writeMetadata({
+				...metadata,
+				state: 'account_id_missing'
+			});
+			throw new CodexAuthError('account_id_missing', 'Codex account id is missing');
+		}
 
 		return {
 			accessToken: freshTokens.accessToken,
@@ -246,14 +257,11 @@ export class CodexAuthManager {
 			localAccountKey: metadata.localAccountKey,
 			accountLabel: metadata.accountLabel,
 			accountFingerprint: metadata.accountFingerprint,
-			upstreamHeaders: freshTokens.accountId
-				? {
-						'chatgpt-account-id': freshTokens.accountId,
-						originator: 'codex_cli_rs'
-					}
-				: {
-						originator: 'codex_cli_rs'
-					}
+			upstreamHeaders: {
+				'ChatGPT-Account-Id': accountId,
+				...(freshTokens.fedramp ? { 'X-OpenAI-Fedramp': 'true' } : {}),
+				originator: 'codex_cli_rs'
+			}
 		};
 	}
 
@@ -266,9 +274,15 @@ export class CodexAuthManager {
 			await this.persistTokens({
 				...refreshed,
 				accountId: refreshed.accountId ?? tokens.accountId,
+				fedramp: refreshed.fedramp ?? tokens.fedramp,
 				email: refreshed.email ?? tokens.email
 			});
-			return refreshed;
+			return {
+				...refreshed,
+				accountId: refreshed.accountId ?? tokens.accountId,
+				fedramp: refreshed.fedramp ?? tokens.fedramp,
+				email: refreshed.email ?? tokens.email
+			};
 		} catch (error) {
 			await this.writeMetadata({
 				...metadata,
@@ -280,12 +294,24 @@ export class CodexAuthManager {
 
 	private async persistTokens(tokens: CodexTokenSet): Promise<CodexAuthMetadata> {
 		validateTokenSet(tokens);
+		const existing = await this.readMetadata();
+
+		if (!tokens.accountId) {
+			await this.writeMetadata({
+				localAccountKey: existing?.localAccountKey ?? `codex_${randomUUID()}`,
+				accountFingerprint: existing?.accountFingerprint,
+				accountLabel: existing?.accountLabel ?? 'Codex Account',
+				expiresAt: tokens.expiresAt,
+				state: 'account_id_missing'
+			});
+			throw new CodexAuthError('account_id_missing', 'Codex account id is missing');
+		}
+
 		await this.secrets.store(TOKEN_SECRET_KEY, JSON.stringify(tokens));
 
-		const existing = await this.readMetadata();
 		const metadata: CodexAuthMetadata = {
 			localAccountKey: existing?.localAccountKey ?? `codex_${randomUUID()}`,
-			accountFingerprint: tokens.accountId ? fingerprint(tokens.accountId) : existing?.accountFingerprint,
+			accountFingerprint: fingerprint(tokens.accountId),
 			accountLabel: existing?.accountLabel ?? 'Codex Account',
 			expiresAt: tokens.expiresAt,
 			state: 'authenticated'
@@ -313,7 +339,12 @@ export class CodexAuthManager {
 
 export class CodexAuthError extends Error {
 	constructor(
-		readonly code: 'auth_required' | 'auth_refresh_failed' | 'invalid_import' | 'oauth_unavailable',
+		readonly code:
+			| 'auth_required'
+			| 'auth_refresh_failed'
+			| 'invalid_import'
+			| 'oauth_unavailable'
+			| 'account_id_missing',
 		message: string
 	) {
 		super(message);
@@ -359,6 +390,11 @@ export function parseCodexAuthJson(value: unknown): CodexTokenSet {
 			stringField(tokenContainer.accountId) ??
 			stringField(value.account_id) ??
 			stringField(value.accountId),
+		fedramp:
+			booleanField(tokenContainer.fedramp) ??
+			booleanField(tokenContainer.chatgpt_account_is_fedramp) ??
+			booleanField(value.fedramp) ??
+			booleanField(value.chatgpt_account_is_fedramp),
 		email: stringField(tokenContainer.email) ?? stringField(value.email)
 	};
 }
@@ -403,6 +439,15 @@ function readAccountIdClaim(claims: Record<string, unknown>): string | undefined
 	return stringField(claims.chatgpt_account_id);
 }
 
+function readFedrampClaim(claims: Record<string, unknown>): boolean | undefined {
+	const authClaims = claims['https://api.openai.com/auth'];
+	if (isRecord(authClaims)) {
+		return booleanField(authClaims.chatgpt_account_is_fedramp);
+	}
+
+	return booleanField(claims.chatgpt_account_is_fedramp);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -413,6 +458,10 @@ function stringField(value: unknown): string | undefined {
 
 function numberField(value: unknown): number | undefined {
 	return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanField(value: unknown): boolean | undefined {
+	return typeof value === 'boolean' ? value : undefined;
 }
 
 function readErrorMessage(error: unknown): string {

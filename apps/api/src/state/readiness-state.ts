@@ -9,12 +9,21 @@ export class ReadinessState {
 	private controlConfigured: boolean;
 	private controlAuthenticated = false;
 	private authHandoffConnected = false;
+	private authHandoffLeaseExpiresAt = 0;
 	private codexAuthState: CodexAuthState = 'not_configured';
 	private modelPolicyState: ModelPolicyState = 'workaround_disabled';
 	private proxyState: ProxyState = 'auth_not_ready';
+	private usageStorageState: 'ready' | 'degraded' = 'ready';
+	private readonly now: () => number;
+	private readonly authHandoffLeaseMs: number;
 
-	constructor(controlConfigured: boolean) {
+	constructor(
+		controlConfigured: boolean,
+		options: { now?: () => number; authHandoffLeaseMs?: number } = {}
+	) {
 		this.controlConfigured = controlConfigured;
+		this.now = options.now ?? Date.now;
+		this.authHandoffLeaseMs = options.authHandoffLeaseMs ?? 5_000;
 	}
 
 	markControlAuthenticated(): void {
@@ -25,6 +34,7 @@ export class ReadinessState {
 
 	markAuthHandoffConnected(connected = true): void {
 		this.authHandoffConnected = connected;
+		this.authHandoffLeaseExpiresAt = connected ? this.now() + this.authHandoffLeaseMs : 0;
 		this.recomputeProxyState();
 	}
 
@@ -38,7 +48,13 @@ export class ReadinessState {
 		this.recomputeProxyState();
 	}
 
+	setUsageStorageState(state: 'ready' | 'degraded'): void {
+		this.usageStorageState = state;
+		this.recomputeProxyState();
+	}
+
 	isReady(): boolean {
+		this.recomputeProxyState();
 		return (
 			this.controlConfigured &&
 			this.controlAuthenticated &&
@@ -60,17 +76,24 @@ export class ReadinessState {
 	}
 
 	getInternalStatus(): InternalStatusResponse {
+		this.recomputeProxyState();
 		return {
 			controlConfigured: this.controlConfigured,
 			controlAuthenticated: this.controlAuthenticated,
 			authHandoffConnected: this.authHandoffConnected,
 			codexAuthState: this.codexAuthState,
 			modelPolicyState: this.modelPolicyState,
-			proxyState: this.proxyState
+			proxyState: this.proxyState,
+			usageStorageState: this.usageStorageState
 		};
 	}
 
 	private recomputeProxyState(): void {
+		if (this.authHandoffConnected && this.now() > this.authHandoffLeaseExpiresAt) {
+			this.authHandoffConnected = false;
+			this.authHandoffLeaseExpiresAt = 0;
+		}
+
 		if (!this.controlAuthenticated || !this.authHandoffConnected) {
 			this.proxyState = 'control_disconnected';
 			return;

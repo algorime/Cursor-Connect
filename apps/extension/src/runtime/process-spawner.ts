@@ -36,6 +36,13 @@ export class NodeProcessSpawner implements ProcessSpawner {
 			detached: false
 		});
 
+		child.stdout?.on('data', (chunk: Buffer) => {
+			process.stdout.write(chunk);
+		});
+		child.stderr?.on('data', (chunk: Buffer) => {
+			process.stderr.write(chunk);
+		});
+
 		const onExit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
 			child.once('exit', (code, signal) => {
 				resolve({ code, signal });

@@ -10,5 +10,5 @@ export default defineConfig({
 	sourcemap: true,
 	clean: true,
 	outExtension: () => ({ js: '.cjs' }),
-	noExternal: ['@codex-auth-ext/shared', 'fastify']
+	noExternal: ['@codex-auth-ext/shared', 'fastify', 'sql.js']
 });

@@ -4,6 +4,7 @@ import { SECRET_FIELD_NAMES } from '@codex-auth-ext/shared';
 export interface UsageStore {
 	record(record: UsageRecord): void;
 	list(): UsageRecord[];
+	close?(): Promise<void> | void;
 }
 
 export class InMemoryUsageStore implements UsageStore {

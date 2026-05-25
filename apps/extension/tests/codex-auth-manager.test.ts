@@ -13,6 +13,7 @@ import {
 	type CodexTokenSet,
 	type SecretStore
 } from '../src/codex-auth/codex-auth-manager.js';
+import { waitForOAuthCallback } from '../src/codex-auth/oauth-callback-server.js';
 import {
 	InMemoryExtensionStateStore,
 	ModelRoutingSettingsStore
@@ -37,6 +38,7 @@ class MemorySecretStore implements SecretStore {
 class FakeOAuthClient implements CodexOAuthClient {
 	refreshCalls = 0;
 	failRefresh = false;
+	omitAccountId = false;
 
 	async createAuthorizeUrl(state: string): Promise<{ url: string; codeVerifier: string }> {
 		return {
@@ -46,7 +48,7 @@ class FakeOAuthClient implements CodexOAuthClient {
 	}
 
 	async exchangeCode(_code: string, _codeVerifier: string): Promise<CodexTokenSet> {
-		return tokenSet('access-from-code', 'refresh-from-code');
+		return tokenSet('access-from-code', 'refresh-from-code', this.omitAccountId);
 	}
 
 	async refresh(_refreshToken: string): Promise<CodexTokenSet> {
@@ -54,7 +56,7 @@ class FakeOAuthClient implements CodexOAuthClient {
 		if (this.failRefresh) {
 			throw new Error('refresh_token_invalidated');
 		}
-		return tokenSet(`access-refreshed-${this.refreshCalls}`, 'refresh-rotated');
+		return tokenSet(`access-refreshed-${this.refreshCalls}`, 'refresh-rotated', this.omitAccountId);
 	}
 }
 
@@ -88,6 +90,9 @@ describe('CodexAuthManager', () => {
 		expect(authorizeUrl.hostname).toBe('auth.openai.com');
 		expect(authorizeUrl.searchParams.get('codex_cli_simplified_flow')).toBe('true');
 		expect(authorizeUrl.searchParams.get('originator')).toBe('codex_cli_rs');
+		expect(authorizeUrl.searchParams.get('scope')).toBe(
+			'openid profile email offline_access api.connectors.read api.connectors.invoke'
+		);
 
 		const exchanged = await client.exchangeCode('code-fixture', started.codeVerifier);
 		expect(exchanged).toMatchObject({
@@ -114,6 +119,7 @@ describe('CodexAuthManager', () => {
 					JSON.stringify({
 						access_token: 'dynamic-access',
 						refresh_token: 'dynamic-refresh',
+						id_token: fixtureIdToken(),
 						expires_in: 600
 					}),
 					{ status: 200 }
@@ -129,6 +135,19 @@ describe('CodexAuthManager', () => {
 		expect(seenRedirectUris).toEqual([dynamicRedirectUri]);
 	});
 
+	it('uses the Codex CLI registered loopback callback path for browser OAuth', async () => {
+		const callbackServer = await waitForOAuthCallback({ state: 'callback-state' });
+		try {
+			const redirectUri = new URL(callbackServer.redirectUri);
+
+			expect(redirectUri.hostname).toBe('localhost');
+			expect(redirectUri.port).toBe('1455');
+			expect(redirectUri.pathname).toBe('/auth/callback');
+		} finally {
+			await callbackServer.dispose();
+		}
+	});
+
 	it('starts and completes built-in OAuth into SecretStorage-backed metadata', async () => {
 		const secrets = new MemorySecretStore();
 		const manager = new CodexAuthManager(secrets, new FakeOAuthClient());
@@ -141,6 +160,19 @@ describe('CodexAuthManager', () => {
 		expect(metadata.state).toBe('authenticated');
 		expect(metadata.accountFingerprint).toBeDefined();
 		expect(JSON.stringify([...secrets.values.values()])).toContain('access-from-code');
+	});
+
+	it('does not mark OAuth complete when the account id claim is missing', async () => {
+		const secrets = new MemorySecretStore();
+		const oauth = new FakeOAuthClient();
+		oauth.omitAccountId = true;
+		const manager = new CodexAuthManager(secrets, oauth);
+
+		await expect(manager.completeOAuth('code', 'verifier')).rejects.toMatchObject({
+			code: 'account_id_missing'
+		});
+		await expect(manager.getStatus()).resolves.toMatchObject({ state: 'account_id_missing' });
+		expect(JSON.stringify([...secrets.values.values()])).not.toContain('access-from-code');
 	});
 
 	it('imports explicit auth.json token material and rejects API-key auth', async () => {
@@ -185,6 +217,26 @@ describe('CodexAuthManager', () => {
 		});
 	});
 
+	it('rejects imported OAuth token material without an account id', async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-auth-import-missing-account-'));
+		const importPath = path.join(dir, 'auth.json');
+		const manager = new CodexAuthManager(new MemorySecretStore(), new FakeOAuthClient());
+
+		await fs.writeFile(
+			importPath,
+			JSON.stringify({
+				access_token: 'import-access',
+				refresh_token: 'import-refresh',
+				expires_at: Date.now() + 60_000
+			})
+		);
+
+		await expect(manager.importAuthJson(importPath)).rejects.toMatchObject({
+			code: 'account_id_missing'
+		});
+		await expect(manager.getStatus()).resolves.toMatchObject({ state: 'account_id_missing' });
+	});
+
 	it('serializes refresh and marks only the account auth-refresh-failed on refresh errors', async () => {
 		const secrets = new MemorySecretStore();
 		const oauth = new FakeOAuthClient();
@@ -216,6 +268,20 @@ describe('CodexAuthManager', () => {
 		expect([...secrets.values.values()].join('\n')).not.toContain('access-from-code');
 		await expect(manager.getStatus()).resolves.toMatchObject({ state: 'auth_required' });
 	});
+
+	it('hands off Cursor-Azure-compatible upstream account headers without refresh material', async () => {
+		const manager = new CodexAuthManager(new MemorySecretStore(), new FakeOAuthClient());
+
+		await manager.completeOAuth('code', 'verifier');
+		const context = await manager.getRequestScopedAuth();
+
+		expect(context.upstreamHeaders).toMatchObject({
+			'ChatGPT-Account-Id': 'acct_fixture',
+			'X-OpenAI-Fedramp': 'true',
+			originator: 'codex_cli_rs'
+		});
+		expect(JSON.stringify(context)).not.toMatch(/refresh-from-code|refresh-rotated|id-token-fixture/i);
+	});
 });
 
 describe('ModelRoutingSettingsStore', () => {
@@ -228,13 +294,14 @@ describe('ModelRoutingSettingsStore', () => {
 	});
 });
 
-function tokenSet(accessToken: string, refreshToken: string): CodexTokenSet {
+function tokenSet(accessToken: string, refreshToken: string, omitAccountId = false): CodexTokenSet {
 	return {
 		accessToken,
 		refreshToken,
 		idToken: 'id-token-fixture',
 		expiresAt: Date.now() + 60_000,
-		accountId: 'acct_fixture',
+		accountId: omitAccountId ? undefined : 'acct_fixture',
+		fedramp: true,
 		email: 'fixture@example.invalid'
 	};
 }

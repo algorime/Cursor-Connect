@@ -84,6 +84,10 @@ export class PendingAuthQueue {
 		return new Promise((resolve) => {
 			const done = (request: PendingAuthRequest | null): void => {
 				clearTimeout(timer);
+				const index = this.waitingPolls.indexOf(done);
+				if (index !== -1) {
+					this.waitingPolls.splice(index, 1);
+				}
 				this.connectedPolls = Math.max(0, this.connectedPolls - 1);
 				if (this.connectedPolls === 0 && this.entries.size === 0) {
 					this.setState('idle');

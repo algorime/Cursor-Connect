@@ -24,3 +24,4 @@ apps/extension/api/
 # OS / editor
 .DS_Store
 *.log
+.cursor/

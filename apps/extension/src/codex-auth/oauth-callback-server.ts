@@ -1,5 +1,8 @@
 import http from 'node:http';
 
+const CODEX_OAUTH_CALLBACK_PORT = 1455;
+const CODEX_OAUTH_CALLBACK_PATH = '/auth/callback';
+
 export interface OAuthCallbackResult {
 	code: string;
 	state: string;
@@ -22,7 +25,7 @@ export async function waitForOAuthCallback(options: {
 		}, timeoutMs);
 
 		server.on('request', (request, response) => {
-			const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+			const url = new URL(request.url ?? '/', 'http://localhost');
 			const code = url.searchParams.get('code');
 			const state = url.searchParams.get('state');
 
@@ -49,7 +52,7 @@ export async function waitForOAuthCallback(options: {
 
 	await new Promise<void>((resolve, reject) => {
 		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
+		server.listen(CODEX_OAUTH_CALLBACK_PORT, 'localhost', () => {
 			server.off('error', reject);
 			resolve();
 		});
@@ -61,7 +64,7 @@ export async function waitForOAuthCallback(options: {
 	}
 
 	return {
-		redirectUri: `http://127.0.0.1:${address.port}/callback`,
+		redirectUri: `http://localhost:${address.port}${CODEX_OAUTH_CALLBACK_PATH}`,
 		waitForCallback,
 		dispose: async () => {
 			await new Promise<void>((resolve) => server.close(() => resolve()));

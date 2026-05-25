@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+
 import { generateSecret, type SafeLogEvent, type UsageRecord } from '@codex-auth-ext/shared';
 import type { FastifyPluginCallback } from 'fastify';
 
@@ -13,7 +15,8 @@ import {
 } from '../codex/codex-upstream-client.js';
 import { adaptCursorRequestToCodexResponses } from '../protocol/cursor-request-adapter.js';
 import { encodeDone, encodeSseData } from '../protocol/sse.js';
-import { superviseResponsesEvents } from '../protocol/responses-stream-supervisor.js';
+import { ResponsesStreamSupervisor } from '../protocol/responses-stream-supervisor.js';
+import { emitSafeLog } from '../logger/safe-logger.js';
 import type { ReadinessState } from '../state/readiness-state.js';
 import type { UsageStore } from '../usage/usage-store.js';
 import type { ModelRoutingSettings } from '../models/codex-model-policy.js';
@@ -45,7 +48,7 @@ const plugin: FastifyPluginCallback<ChatCompletionsRouteOptions> = (app, opts, d
 			return reply.status(503).send(openAiError('service_not_ready', 'service_not_ready'));
 		}
 
-		const adapted = adaptCursorRequestToCodexResponses(request.body, opts.modelRoutingSettings);
+		const adapted = adaptCursorRequestToCodexResponses(request.body, opts.modelRoutingSettings, request.headers);
 
 		if (!adapted.ok) {
 			return reply
@@ -61,42 +64,48 @@ const plugin: FastifyPluginCallback<ChatCompletionsRouteOptions> = (app, opts, d
 				responsesUrl: opts.upstreamResponsesUrl
 			});
 			const upstreamResult = await upstream.sendResponsesRequest(adapted.upstreamRequest);
-			const supervised = superviseResponsesEvents(upstreamResult.events, {
+			const supervisor = new ResponsesStreamSupervisor({
 				model: adapted.route.upstreamModelId
 			});
-			const usageRecord: UsageRecord = {
-				id: generateSecret(12),
-				timestamp: startedAt,
-				latencyMs: Date.now() - startedAt,
-				status: supervised.error ? 'failed' : 'completed',
-				cursorFacingModelId: adapted.route.cursorFacingModelId,
-				upstreamModelId: adapted.route.upstreamModelId,
-				requestShape: adapted.requestShape,
-				localAccountKey: upstreamResult.authContext.localAccountKey,
-				inputTokens: supervised.usage?.prompt_tokens,
-				cachedInputTokens: supervised.usage?.prompt_tokens_details?.cached_tokens,
-				outputTokens: supervised.usage?.completion_tokens,
-				reasoningTokens: supervised.usage?.completion_tokens_details?.reasoning_tokens,
-				totalTokens: supervised.usage?.total_tokens,
-				finishReason: supervised.finishReason,
-				outputStarted: supervised.outputStarted,
-				errorCategory: supervised.error?.category ?? 'none',
-				errorCode: supervised.error?.code
-			};
-			opts.usageStore.record(usageRecord);
 
-			if (supervised.error) {
-				return reply
-					.status(supervised.outputStarted ? 200 : 502)
-					.header('content-type', 'text/event-stream')
-					.send(`${encodeSseData(openAiError(supervised.error.code, supervised.error.category))}${encodeDone()}`);
-			}
+			const stream = Readable.from((async function* () {
+				for await (const event of upstreamResult.eventStream) {
+					for (const chunk of supervisor.handleEvent(event)) {
+						yield encodeSseData(chunk);
+					}
+					if (supervisor.isDone) {
+						break;
+					}
+				}
 
-			const stream = `${supervised.chunks.map(encodeSseData).join('')}${encodeDone()}`;
-			return reply.header('content-type', 'text/event-stream').send(stream);
+				for (const chunk of supervisor.finish()) {
+					yield encodeSseData(chunk);
+				}
+
+				const supervised = supervisor.snapshot();
+				if (supervised.error && supervised.chunks.length === 0) {
+					yield encodeSseData(openAiError(supervised.error.code, supervised.error.category));
+				}
+
+				yield encodeDone();
+				opts.usageStore.record(usageRecordFromSupervised({
+					startedAt,
+					supervised,
+					cursorFacingModelId: adapted.route.cursorFacingModelId,
+					upstreamModelId: adapted.route.upstreamModelId,
+					requestShape: adapted.requestShape,
+					localAccountKey: upstreamResult.authContext.localAccountKey
+				}));
+			})());
+			return reply
+				.header('content-type', 'text/event-stream')
+				.header('cache-control', 'no-cache')
+				.send(stream);
 		} catch (error) {
-			const code = error instanceof CodexUpstreamAuthError ? error.code : 'upstream_failure';
+			const code = classifyThrownErrorCode(error);
 			const category = classifyThrownError(error);
+			const statusCode = statusCodeForThrownError(error);
+			const upstreamStatus = error instanceof CodexUpstreamHttpError ? error.status : undefined;
 			opts.usageStore.record({
 				id: generateSecret(12),
 				timestamp: startedAt,
@@ -110,8 +119,21 @@ const plugin: FastifyPluginCallback<ChatCompletionsRouteOptions> = (app, opts, d
 				errorCategory: category,
 				errorCode: code
 			});
+			emitSafeLog({
+				component: 'api',
+				eventType: 'api.response',
+				severity: 'warn',
+				timestamp: Date.now(),
+				message: 'cursor-facing request failed',
+				method: request.method,
+				path: '/v1/chat/completions',
+				statusCode,
+				errorCategory: category,
+				errorCode: code,
+				upstreamStatus
+			});
 			return reply
-				.status(error instanceof CodexUpstreamAuthError ? 401 : 502)
+				.status(statusCode)
 				.send(openAiError(code, category));
 		}
 	});
@@ -141,12 +163,49 @@ function authenticateCursorRoute(
 	});
 }
 
-function classifyThrownError(error: unknown): 'auth' | 'provider' | 'rate_limit' | 'quota' {
+function usageRecordFromSupervised(input: {
+	startedAt: number;
+	supervised: ReturnType<ResponsesStreamSupervisor['snapshot']>;
+	cursorFacingModelId: string;
+	upstreamModelId: string;
+	requestShape: 'responses' | 'chat_completions';
+	localAccountKey: string;
+}): UsageRecord {
+	const { supervised } = input;
+
+	return {
+		id: generateSecret(12),
+		timestamp: input.startedAt,
+		latencyMs: Date.now() - input.startedAt,
+		status: supervised.error ? 'failed' : 'completed',
+		cursorFacingModelId: input.cursorFacingModelId,
+		upstreamModelId: input.upstreamModelId,
+		requestShape: input.requestShape,
+		localAccountKey: input.localAccountKey,
+		inputTokens: supervised.usage?.prompt_tokens,
+		cachedInputTokens: supervised.usage?.prompt_tokens_details?.cached_tokens,
+		outputTokens: supervised.usage?.completion_tokens,
+		reasoningTokens: supervised.usage?.completion_tokens_details?.reasoning_tokens,
+		totalTokens: supervised.usage?.total_tokens,
+		finishReason: supervised.finishReason,
+		outputStarted: supervised.outputStarted,
+		errorCategory: supervised.error?.category ?? 'none',
+		errorCode: supervised.error?.code
+	};
+}
+
+function classifyThrownError(error: unknown): 'auth' | 'provider' | 'rate_limit' | 'quota' | 'invalid_request' {
 	if (error instanceof CodexUpstreamAuthError) {
 		return 'auth';
 	}
 
 	if (error instanceof CodexUpstreamHttpError) {
+		if (error.status === 400) {
+			return 'invalid_request';
+		}
+		if (error.status === 401) {
+			return 'auth';
+		}
 		if (error.status === 402) {
 			return 'quota';
 		}
@@ -156,6 +215,32 @@ function classifyThrownError(error: unknown): 'auth' | 'provider' | 'rate_limit'
 	}
 
 	return 'provider';
+}
+
+function statusCodeForThrownError(error: unknown): number {
+	if (error instanceof CodexUpstreamAuthError) {
+		return 401;
+	}
+
+	if (error instanceof CodexUpstreamHttpError) {
+		if ([400, 401, 402, 429].includes(error.status)) {
+			return error.status;
+		}
+	}
+
+	return 502;
+}
+
+function classifyThrownErrorCode(error: unknown): string {
+	if (error instanceof CodexUpstreamAuthError) {
+		return error.code;
+	}
+
+	if (error instanceof CodexUpstreamHttpError) {
+		return `upstream_http_${error.status}`;
+	}
+
+	return 'upstream_failure';
 }
 
 function openAiError(code: string, category: string): { error: { message: string; type: string; code: string } } {

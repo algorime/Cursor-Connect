@@ -62,6 +62,8 @@ export type SafeLogEventType =
 	| 'runtime.health_failed'
 	| 'runtime.readiness_failed'
 	| 'runtime.internal_control_failed'
+	| 'api.request'
+	| 'api.response'
 	| 'auth.failure'
 	| 'process.spawned'
 	| 'process.exited';
@@ -75,6 +77,16 @@ export interface SafeLogEvent {
 	message: string;
 	port?: number;
 	exitCode?: number | null;
+	method?: string;
+	path?: string;
+	hasAuthHeader?: boolean;
+	userAgent?: string | null;
+	requestId?: string | null;
+	statusCode?: number;
+	errorCategory?: string;
+	errorCode?: string;
+	upstreamStatus?: number;
+	refreshedAfter401?: boolean;
 }
 
 export interface ReadyResponse {
@@ -85,8 +97,8 @@ export interface InternalControlPingResponse {
 	ok: boolean;
 }
 
-export type CursorFacingModelId = 'gpt-5.4' | 'gpt-5.4-mini';
-export type UpstreamModelId = 'gpt-5.5' | 'gpt-5.4' | 'gpt-5.4-mini';
+export type CursorFacingModelId = string;
+export type UpstreamModelId = string;
 
 export type ModelPolicyState =
 	| 'ready'
@@ -116,6 +128,7 @@ export type CodexAuthState =
 	| 'authenticated'
 	| 'auth_required'
 	| 'auth_refresh_failed'
+	| 'account_id_missing'
 	| 'oauth_unavailable'
 	| 'import_available';
 
@@ -133,6 +146,7 @@ export interface InternalStatusResponse {
 	codexAuthState: CodexAuthState;
 	modelPolicyState: ModelPolicyState;
 	proxyState: ProxyState;
+	usageStorageState?: 'ready' | 'degraded';
 }
 
 export type AuthRequestReason = 'normal' | 'forced_refresh_after_401';
@@ -173,6 +187,7 @@ export interface RequestScopedAuthContext {
 export type AuthHandoffFailureCode =
 	| 'auth_required'
 	| 'auth_refresh_failed'
+	| 'account_id_missing'
 	| 'auth_unavailable'
 	| 'auth_handoff_timeout'
 	| 'control_shutting_down';

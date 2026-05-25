@@ -16,10 +16,16 @@ importers:
       fastify:
         specifier: ~5.8.5
         version: 5.8.5
+      sql.js:
+        specifier: ^1.14.1
+        version: 1.14.1
     devDependencies:
       '@types/node':
         specifier: ~22.15.35
         version: 22.15.35
+      '@types/sql.js':
+        specifier: ^1.4.11
+        version: 1.4.11
       tsup:
         specifier: ~8.5.1
         version: 8.5.1(postcss@8.5.15)(typescript@5.7.3)
@@ -411,6 +417,9 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
+  '@types/emscripten@1.41.5':
+    resolution: {integrity: sha512-cMQm7pxu6BxtHyqJ7mQZ2kXWV5SLmugybFdHCBbJ5eHzOo6VhBckEgAT3//rP5FwPHNPeEiq4SmQ5ucBwsOo4Q==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -419,6 +428,9 @@ packages:
 
   '@types/node@22.15.35':
     resolution: {integrity: sha512-stV91mHxlWpDksiUiivmFfQzjy2JLlb2NUTxKipiANEbxBZsdbDU9fSrT7SHY4uoCXAxYfJZVasn3x2/hqpd3g==}
+
+  '@types/sql.js@1.4.11':
+    resolution: {integrity: sha512-QXIx38p2ZThJaK9vP5ZdqdlRe1FG9I8SmCZOS7FHfB/2qPAjZwkL7/vlfPg6N/oWHuuOaGg/P/IRwfP2W0kWVQ==}
 
   '@types/vscode@1.96.0':
     resolution: {integrity: sha512-qvZbSZo+K4ZYmmDuaodMbAa67Pl6VDQzLKFka6rq+3WUTY4Kro7Bwoi0CuZLO/wema0ygcmpwow7zZfPJTs5jg==}
@@ -773,6 +785,9 @@ packages:
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
+
+  sql.js@1.14.1:
+    resolution: {integrity: sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A==}
 
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
@@ -1137,6 +1152,8 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
+  '@types/emscripten@1.41.5': {}
+
   '@types/estree@1.0.8': {}
 
   '@types/estree@1.0.9': {}
@@ -1144,6 +1161,11 @@ snapshots:
   '@types/node@22.15.35':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/sql.js@1.4.11':
+    dependencies:
+      '@types/emscripten': 1.41.5
+      '@types/node': 22.15.35
 
   '@types/vscode@1.96.0': {}
 
@@ -1507,6 +1529,8 @@ snapshots:
   source-map@0.7.6: {}
 
   split2@4.2.0: {}
+
+  sql.js@1.14.1: {}
 
   stackback@0.0.2: {}
 

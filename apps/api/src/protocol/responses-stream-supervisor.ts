@@ -20,94 +20,225 @@ interface SupervisorOptions {
 	reasoningDisplay?: 'none';
 }
 
-export function superviseResponsesEvents(
-	events: Array<Record<string, unknown>>,
-	options: SupervisorOptions
-): StreamSupervisorResult {
-	const chunks: ChatCompletionChunk[] = [];
-	const id = options.id ?? 'chatcmpl-fixture';
-	const created = options.created ?? Math.floor(Date.now() / 1000);
-	let outputStarted = false;
-	let usage: TokenUsage | null = null;
-	let finishReason: string | null = null;
-	let error: StreamSupervisorResult['error'] = null;
-	let done = false;
+export class ResponsesStreamSupervisor {
+	private readonly chunks: ChatCompletionChunk[] = [];
+	private readonly id: string;
+	private readonly created: number;
+	private outputStartedValue = false;
+	private usageValue: TokenUsage | null = null;
+	private finishReasonValue: string | null = null;
+	private errorValue: StreamSupervisorResult['error'] = null;
+	private doneValue = false;
+	private toolCalls = 0;
 
-	for (const event of events) {
+	constructor(private readonly options: SupervisorOptions) {
+		this.id = options.id ?? 'chatcmpl-fixture';
+		this.created = options.created ?? Math.floor(Date.now() / 1000);
+	}
+
+	handleEvent(event: Record<string, unknown>): ChatCompletionChunk[] {
+		if (this.doneValue) {
+			return [];
+		}
+
+		const chunkStart = this.chunks.length;
 		const type = String(event.type ?? '');
 
-		if (type === 'response.output_text.delta') {
+		if (
+			type === 'response.output_text.delta' ||
+			type === 'response.refusal.delta' ||
+			type === 'response.audio.transcript.delta' ||
+			type === 'response.code_interpreter_call_code.delta'
+		) {
 			const delta = typeof event.delta === 'string' ? event.delta : '';
 			if (delta) {
-				outputStarted = true;
-				chunks.push(makeChunk(id, created, options.model, { content: delta }, null));
+				this.outputStartedValue = true;
+				this.chunks.push(makeChunk(this.id, this.created, this.options.model, { role: 'assistant', content: delta }, null));
 			}
-			continue;
+			return this.chunks.slice(chunkStart);
 		}
 
-		if (type === 'response.output_item.added' && isToolCall(event.item)) {
-			outputStarted = true;
-			chunks.push(makeChunk(id, created, options.model, { tool_calls: [event.item] }, null));
-			continue;
+		if (type === 'response.output_item.added') {
+			if (isToolCall(event.item)) {
+				this.outputStartedValue = true;
+				const item = event.item;
+				const index = this.toolCalls;
+				this.toolCalls += 1;
+				this.chunks.push(
+					makeChunk(
+						this.id,
+						this.created,
+						this.options.model,
+						{
+							role: 'assistant',
+							content: null,
+							tool_calls: [
+								{
+									index,
+									id: stringField(item.call_id) || stringField(item.id),
+									type: 'function',
+									function: {
+										name: stringField(item.name),
+										arguments: stringField(item.arguments) || stringField(item.input)
+									}
+								}
+							]
+						},
+						null
+					)
+				);
+			}
+			return this.chunks.slice(chunkStart);
 		}
 
-		if (type === 'response.reasoning_text.delta') {
-			// Default reasoning display is none; do not inject reasoning into assistant-visible content.
-			continue;
+		if (type === 'response.function_call_arguments.delta' || type === 'response.custom_tool_call_input.delta' || type === 'response.mcp_call_arguments.delta') {
+			if (this.toolCalls > 0) {
+				this.chunks.push(
+					makeChunk(
+						this.id,
+						this.created,
+						this.options.model,
+						{
+							tool_calls: [
+								{
+									index: this.toolCalls - 1,
+									function: {
+										arguments: stringField(event.delta)
+									}
+								}
+							]
+						},
+						null
+					)
+				);
+			}
+			return this.chunks.slice(chunkStart);
+		}
+
+		if (type === 'response.reasoning_text.delta' || type === 'response.reasoning_summary_text.delta') {
+			const delta = stringField(event.delta);
+			if (delta) {
+				this.chunks.push(makeChunk(this.id, this.created, this.options.model, reasoningDelta(delta), null));
+			}
+			return this.chunks.slice(chunkStart);
 		}
 
 		if (type === 'response.completed') {
-			usage = normalizeUsage(event.response);
-			finishReason = 'stop';
-			chunks.push(makeChunk(id, created, options.model, {}, finishReason, usage));
-			done = true;
-			break;
+			this.usageValue = normalizeUsage(event.response);
+			this.finishReasonValue = this.toolCalls > 0 ? 'tool_calls' : 'stop';
+			this.chunks.push(makeChunk(this.id, this.created, this.options.model, {}, this.finishReasonValue));
+			if (this.usageValue) {
+				this.chunks.push(makeUsageChunk(this.id, this.created, this.options.model, this.usageValue));
+			}
+			this.doneValue = true;
+			return this.chunks.slice(chunkStart);
 		}
 
 		if (type === 'response.failed') {
-			error = {
-				category: classifyErrorCode(readErrorCode(event)),
-				code: readErrorCode(event),
+			const code = readErrorCode(event);
+			this.errorValue = {
+				category: classifyErrorCode(code),
+				code,
 				message: 'upstream response failed'
 			};
-			break;
+			this.doneValue = true;
+			return this.chunks.slice(chunkStart);
 		}
 
 		if (type === 'response.incomplete') {
-			error = {
+			this.errorValue = {
 				category: 'stream',
 				code: 'response_incomplete',
 				message: 'upstream response incomplete'
 			};
-			break;
+			this.doneValue = true;
+			return this.chunks.slice(chunkStart);
 		}
 
 		if (type === 'error') {
 			const code = readErrorCode(event);
-			error = {
+			this.errorValue = {
 				category: classifyErrorCode(code),
 				code,
 				message: 'upstream stream error'
 			};
+			this.doneValue = true;
+			return this.chunks.slice(chunkStart);
+		}
+
+		return this.chunks.slice(chunkStart);
+	}
+
+	finish(): ChatCompletionChunk[] {
+		const chunkStart = this.chunks.length;
+
+		if (!this.doneValue && !this.errorValue && this.chunks.length > 0) {
+			this.errorValue = {
+				category: 'stream',
+				code: 'stream_closed_before_completion',
+				message: 'upstream stream closed before completion'
+			};
+			this.doneValue = true;
+		}
+
+		if (!this.doneValue && !this.errorValue) {
+			this.errorValue = {
+				category: 'stream',
+				code: 'stream_closed_before_completion',
+				message: 'upstream stream closed before completion'
+			};
+			this.doneValue = true;
+		}
+
+		return this.chunks.slice(chunkStart);
+	}
+
+	snapshot(): StreamSupervisorResult {
+		return {
+			chunks: [...this.chunks],
+			done: this.doneValue,
+			outputStarted: this.outputStartedValue,
+			usage: this.usageValue,
+			finishReason: this.finishReasonValue,
+			error: this.errorValue
+		};
+	}
+
+	get isDone(): boolean {
+		return this.doneValue;
+	}
+}
+
+export function superviseResponsesEvents(
+	events: Array<Record<string, unknown>>,
+	options: SupervisorOptions
+): StreamSupervisorResult {
+	const supervisor = new ResponsesStreamSupervisor(options);
+
+	for (const event of events) {
+		supervisor.handleEvent(event);
+		if (supervisor.isDone) {
 			break;
 		}
 	}
 
-	if (!done && !error) {
-		error = {
-			category: 'stream',
-			code: 'stream_closed_before_completion',
-			message: 'upstream stream closed before completion'
-		};
-	}
+	supervisor.finish();
+	return supervisor.snapshot();
+}
+
+function reasoningDelta(text: string): Record<string, unknown> {
+	const thinkingBlock = { type: 'thinking', thinking: text };
 
 	return {
-		chunks,
-		done,
-		outputStarted,
-		usage,
-		finishReason,
-		error
+		role: 'assistant',
+		content: null,
+		reasoning: text,
+		reasoning_content: text,
+		reasoning_details: [{ type: 'reasoning.text', text }],
+		thinking_blocks: [thinkingBlock],
+		provider_specific_fields: {
+			thinking_blocks: [thinkingBlock]
+		}
 	};
 }
 
@@ -135,6 +266,22 @@ function makeChunk(
 	};
 }
 
+function makeUsageChunk(
+	id: string,
+	created: number,
+	model: string,
+	usage: TokenUsage
+): ChatCompletionChunk {
+	return {
+		id,
+		object: 'chat.completion.chunk',
+		created,
+		model,
+		choices: [],
+		usage
+	};
+}
+
 function normalizeUsage(response: unknown): TokenUsage | null {
 	if (!isRecord(response) || !isRecord(response.usage)) {
 		return null;
@@ -146,23 +293,23 @@ function normalizeUsage(response: unknown): TokenUsage | null {
 	const totalTokens = numberField(usage.total_tokens) ?? inputTokens + outputTokens;
 	const cachedTokens = isRecord(usage.input_tokens_details)
 		? numberField(usage.input_tokens_details.cached_tokens)
-		: undefined;
+		: 0;
 	const reasoningTokens = isRecord(usage.output_tokens_details)
 		? numberField(usage.output_tokens_details.reasoning_tokens)
-		: undefined;
+		: 0;
 
 	return {
 		prompt_tokens: inputTokens,
 		completion_tokens: outputTokens,
 		total_tokens: totalTokens,
-		prompt_tokens_details: cachedTokens === undefined ? undefined : { cached_tokens: cachedTokens },
-		completion_tokens_details:
-			reasoningTokens === undefined ? undefined : { reasoning_tokens: reasoningTokens }
+		prompt_tokens_details: { cached_tokens: cachedTokens },
+		completion_tokens_details: { reasoning_tokens: reasoningTokens }
 	};
 }
 
 function readErrorCode(event: Record<string, unknown>): string {
-	const error = isRecord(event.error) ? event.error : event;
+	const response = isRecord(event.response) ? event.response : null;
+	const error = isRecord(response?.error) ? response.error : isRecord(event.error) ? event.error : event;
 	return typeof error.code === 'string' ? error.code : 'unknown_error';
 }
 
@@ -186,7 +333,7 @@ function classifyErrorCode(code: string): SafeErrorCategory {
 }
 
 function isToolCall(value: unknown): value is Record<string, unknown> {
-	return isRecord(value) && value.type === 'function_call';
+	return isRecord(value) && (value.type === 'function_call' || value.type === 'custom_tool_call');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -195,4 +342,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function numberField(value: unknown): number {
 	return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function stringField(value: unknown): string {
+	return typeof value === 'string' ? value : '';
 }

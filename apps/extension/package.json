@@ -15,12 +15,19 @@
 	"activationEvents": [
 		"onStartupFinished"
 	],
+	"extensionKind": [
+		"workspace"
+	],
 	"main": "./dist/extension.js",
 	"contributes": {
 		"commands": [
 			{
 				"command": "codexAuthExt.showRuntimeStatus",
 				"title": "Codex Auth: Show Runtime Status"
+			},
+			{
+				"command": "codexAuthExt.copyCursorSetup",
+				"title": "Codex Auth: Copy Cursor Setup"
 			},
 			{
 				"command": "codexAuthExt.restartRuntime",

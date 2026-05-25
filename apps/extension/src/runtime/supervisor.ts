@@ -36,6 +36,7 @@ export interface RuntimeSupervisorOptions {
 	modelRoutingWorkaroundEnabled?: () => boolean;
 	requireReadyOnStart?: boolean;
 	fakeCodexScenario?: string;
+	usageDbPath?: string;
 }
 
 export interface RuntimeStatusView {
@@ -60,6 +61,7 @@ export class RuntimeSupervisor {
 	private readonly modelRoutingWorkaroundEnabled: () => boolean;
 	private readonly requireReadyOnStart: boolean;
 	private readonly fakeCodexScenario?: string;
+	private readonly usageDbPath?: string;
 	private readonly state = new RuntimeStateModel();
 	private authPollAbort: AbortController | null = null;
 
@@ -93,6 +95,7 @@ export class RuntimeSupervisor {
 		this.modelRoutingWorkaroundEnabled = options.modelRoutingWorkaroundEnabled ?? (() => false);
 		this.requireReadyOnStart = options.requireReadyOnStart ?? false;
 		this.fakeCodexScenario = options.fakeCodexScenario;
+		this.usageDbPath = options.usageDbPath;
 	}
 
 	getStatus(): RuntimeStatusView {
@@ -254,7 +257,8 @@ export class RuntimeSupervisor {
 				CODEX_AUTH_EXT_LOCAL_API_KEY: localApiKey,
 				CODEX_AUTH_EXT_INTERNAL_CONTROL_SECRET: internalControlSecret,
 				CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND: this.modelRoutingWorkaroundEnabled() ? '1' : '0',
-				CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: this.fakeCodexScenario ?? ''
+				CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: this.fakeCodexScenario ?? '',
+				CODEX_AUTH_EXT_USAGE_DB_PATH: this.usageDbPath ?? ''
 			}
 		});
 	}

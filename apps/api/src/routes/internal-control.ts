@@ -98,6 +98,8 @@ const plugin: FastifyPluginCallback<InternalControlRouteOptions> = (app, opts, d
 			const accepted = opts.authQueue.respond(request.params.id, request.body);
 			if (request.body.ok) {
 				opts.readinessState.setCodexAuthState('authenticated');
+			} else if (request.body.code === 'account_id_missing') {
+				opts.readinessState.setCodexAuthState('account_id_missing');
 			} else if (request.body.code === 'auth_refresh_failed') {
 				opts.readinessState.setCodexAuthState('auth_refresh_failed');
 			} else if (request.body.code === 'auth_required' || request.body.code === 'auth_unavailable') {

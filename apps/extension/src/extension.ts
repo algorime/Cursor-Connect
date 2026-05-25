@@ -8,9 +8,11 @@ import {
 	OpenAICodexOAuthClient,
 	type SecretStore,
 } from './codex-auth/codex-auth-manager.js';
+import { prepareOAuthCallbackForBrowser } from './codex-auth/oauth-browser-callback.js';
 import { waitForOAuthCallback } from './codex-auth/oauth-callback-server.js';
 import { SafeRuntimeLogger } from './logger/safe-logger.js';
 import { SecretStorageCredentialStore } from './runtime/credentials.js';
+import { buildCursorSetupDetails, serializeCursorSetup } from './runtime/cursor-setup.js';
 import { PortManager } from './runtime/port-manager.js';
 import { JsonFilePortStore } from './runtime/port-store.js';
 import { RuntimeSupervisor } from './runtime/supervisor.js';
@@ -32,6 +34,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	supervisor = new RuntimeSupervisor({
 		extensionPath: context.extensionPath,
 		devMode: context.extensionMode === vscode.ExtensionMode.Development,
+		usageDbPath: path.join(context.globalStorageUri.fsPath, 'usage', 'usage.sqlite'),
 		portManager,
 		credentials,
 		logger,
@@ -63,8 +66,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('codexAuthExt.showRuntimeStatus', () => {
-			const status = supervisor?.getStatus().snapshot;
+			vscode.commands.registerCommand('codexAuthExt.showRuntimeStatus', () => {
+				const status = supervisor?.getStatus().snapshot;
 
 			if (!status) {
 				void vscode.window.showInformationMessage('Runtime not initialized');
@@ -74,10 +77,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 			void vscode.window.showInformationMessage(
 				`Runtime: ${status.phase}${status.localTargetUrl ? ` @ ${status.localTargetUrl}` : ''}`
-			);
-		}),
-		vscode.commands.registerCommand('codexAuthExt.restartRuntime', async () => {
-			if (!supervisor) {
+				);
+			}),
+			vscode.commands.registerCommand('codexAuthExt.copyCursorSetup', async () => {
+				const status = supervisor?.getStatus().snapshot;
+				if (!status?.localTargetUrl) {
+					void vscode.window.showErrorMessage('Runtime target URL is not available');
+
+					return;
+				}
+
+				const setup = buildCursorSetupDetails({
+					localTargetUrl: status.localTargetUrl,
+					apiKey: await credentials.getLocalApiKey()
+				});
+				await vscode.env.clipboard.writeText(serializeCursorSetup(setup));
+				void vscode.window.showWarningMessage(
+					`Copied local target ${setup.localTargetUrl}. Cursor requires a public HTTPS Extension Base URL that forwards to it.`
+				);
+			}),
+			vscode.commands.registerCommand('codexAuthExt.restartRuntime', async () => {
+				if (!supervisor) {
 				return;
 			}
 
@@ -91,10 +111,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 			let callbackServer: Awaited<ReturnType<typeof waitForOAuthCallback>> | null = null;
 			try {
-				const state = crypto.randomUUID();
-				callbackServer = await waitForOAuthCallback({ state });
-				const started = await codexAuth.startOAuth(callbackServer.redirectUri, state);
-				await vscode.env.openExternal(vscode.Uri.parse(started.url));
+					const state = crypto.randomUUID();
+					callbackServer = await waitForOAuthCallback({ state });
+					const callbackPreparation = await prepareOAuthCallbackForBrowser(callbackServer.redirectUri, {
+						parseUri: vscode.Uri.parse,
+						asExternalUri: vscode.env.asExternalUri
+					});
+					if (!callbackPreparation.prepared || !callbackPreparation.compatibleWithFixedRedirect) {
+						void vscode.window.showWarningMessage(
+							'Codex sign-in callback may need manual SSH port forwarding for localhost:1455.'
+						);
+					}
+					const started = await codexAuth.startOAuth(callbackServer.redirectUri, state);
+					await vscode.env.openExternal(vscode.Uri.parse(started.url));
 				const callback = await callbackServer.waitForCallback;
 				await codexAuth.completeOAuth(callback.code, started.codeVerifier, callbackServer.redirectUri);
 				const snapshot = await supervisor?.restart();
@@ -173,6 +202,14 @@ function authErrorToHandoff(error: unknown) {
 			ok: false as const,
 			code: 'auth_refresh_failed' as const,
 			message: 'Codex auth refresh failed'
+		};
+	}
+
+	if (error instanceof CodexAuthError && error.code === 'account_id_missing') {
+		return {
+			ok: false as const,
+			code: 'account_id_missing' as const,
+			message: 'Codex account id is missing'
 		};
 	}
 

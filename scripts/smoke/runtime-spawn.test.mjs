@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const extensionRoot = path.join(repoRoot, 'apps/extension');
 const packagedBundle = path.join(extensionRoot, 'api/bundle/main.cjs');
+const packagedSqlWasm = path.join(extensionRoot, 'api/bundle/sql-wasm.wasm');
 const extensionEntry = path.join(extensionRoot, 'dist/extension.js');
 
 async function getFreePort() {
@@ -33,12 +34,17 @@ function sleep(ms) {
 test('packaged extension layout contains dist entrypoint and staged api bundle', () => {
 	assert.equal(fs.existsSync(extensionEntry), true, 'expected dist/extension.js in packaged layout');
 	assert.equal(fs.existsSync(packagedBundle), true, 'expected api/bundle/main.cjs staged under extension');
+	assert.equal(fs.existsSync(packagedSqlWasm), true, 'expected sql-wasm.wasm staged under extension api bundle');
 });
 
 test('extension-staged api bundle starts and serves health/ready/control boundaries', async () => {
 	const port = await getFreePort();
 	const localApiKey = 'smoke-local-api-key';
 	const internalControlSecret = 'smoke-internal-control-secret';
+	const usageDbPath = path.join(
+		await fs.promises.mkdtemp(path.join(osTmpDir(), 'codex-auth-smoke-usage-')),
+		'usage.sqlite'
+	);
 
 	const child = spawn(process.execPath, [packagedBundle], {
 		cwd: path.dirname(packagedBundle),
@@ -49,7 +55,8 @@ test('extension-staged api bundle starts and serves health/ready/control boundar
 			CODEX_AUTH_EXT_LOCAL_API_KEY: localApiKey,
 			CODEX_AUTH_EXT_INTERNAL_CONTROL_SECRET: internalControlSecret,
 			CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND: '1',
-			CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: 'success_text'
+			CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: 'success_text',
+			CODEX_AUTH_EXT_USAGE_DB_PATH: usageDbPath
 		},
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
@@ -135,6 +142,7 @@ test('extension-staged api bundle starts and serves health/ready/control boundar
 		assert.equal(usageBody.records.length, 1);
 		assert.equal(usageBody.records[0].status, 'completed');
 		assert.doesNotMatch(usageSerialized, /synthetic smoke prompt|smoke-access-token|authorization|email/i);
+		assert.equal(fs.existsSync(usageDbPath), true, 'expected smoke usage sqlite database');
 	} finally {
 		child.kill('SIGTERM');
 		await new Promise((resolve) => child.once('exit', resolve));
@@ -180,4 +188,8 @@ async function answerOneAuthRequest(baseUrl, internalControlSecret) {
 		})
 	});
 	assert.equal(response.status, 200);
+}
+
+function osTmpDir() {
+	return process.env.TMPDIR || '/tmp';
 }

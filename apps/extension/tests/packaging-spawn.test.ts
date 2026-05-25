@@ -81,7 +81,9 @@ describe('packaged extension layout', () => {
 			devMode: false,
 			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
 			credentials: new InMemoryCredentialStore(),
-			logger: new SafeRuntimeLogger({ write: () => {} })
+			logger: new SafeRuntimeLogger({ write: () => {} }),
+			getCodexAuthState: async () => 'authenticated',
+			requireReadyOnStart: true
 		});
 		supervisors.push(supervisor);
 

@@ -1,5 +1,8 @@
 import {
 	INTERNAL_CONTROL_HEADER,
+	type AuthHandoffResponse,
+	type CodexAuthState,
+	type PendingAuthRequest,
 	type ReadyResponse,
 	type RuntimeSnapshot
 } from '@codex-auth-ext/shared';
@@ -28,6 +31,11 @@ export interface RuntimeSupervisorOptions {
 	internalControlTimeoutMs?: number;
 	pollIntervalMs?: number;
 	fetchImpl?: typeof fetch;
+	authHandoffResponder?: (request: PendingAuthRequest) => Promise<AuthHandoffResponse>;
+	getCodexAuthState?: () => Promise<CodexAuthState>;
+	modelRoutingWorkaroundEnabled?: () => boolean;
+	requireReadyOnStart?: boolean;
+	fakeCodexScenario?: string;
 }
 
 export interface RuntimeStatusView {
@@ -47,7 +55,13 @@ export class RuntimeSupervisor {
 	private readonly internalControlTimeoutMs: number;
 	private readonly pollIntervalMs: number;
 	private readonly fetchImpl: typeof fetch;
+	private readonly authHandoffResponder: (request: PendingAuthRequest) => Promise<AuthHandoffResponse>;
+	private readonly getCodexAuthState: () => Promise<CodexAuthState>;
+	private readonly modelRoutingWorkaroundEnabled: () => boolean;
+	private readonly requireReadyOnStart: boolean;
+	private readonly fakeCodexScenario?: string;
 	private readonly state = new RuntimeStateModel();
+	private authPollAbort: AbortController | null = null;
 
 	private process: ManagedProcess | null = null;
 	private starting = false;
@@ -68,6 +82,17 @@ export class RuntimeSupervisor {
 		this.internalControlTimeoutMs = options.internalControlTimeoutMs ?? 10_000;
 		this.pollIntervalMs = options.pollIntervalMs ?? 100;
 		this.fetchImpl = options.fetchImpl ?? fetch;
+		this.authHandoffResponder =
+			options.authHandoffResponder ??
+			(async () => ({
+				ok: false,
+				code: 'auth_required',
+				message: 'Codex auth is required'
+			}));
+		this.getCodexAuthState = options.getCodexAuthState ?? (async () => 'not_configured');
+		this.modelRoutingWorkaroundEnabled = options.modelRoutingWorkaroundEnabled ?? (() => false);
+		this.requireReadyOnStart = options.requireReadyOnStart ?? false;
+		this.fakeCodexScenario = options.fakeCodexScenario;
 	}
 
 	getStatus(): RuntimeStatusView {
@@ -164,13 +189,24 @@ export class RuntimeSupervisor {
 				});
 			}
 
+			this.startAuthPollLoop(localTargetUrl, internalControlSecret);
+			await this.publishAuthStatus(localTargetUrl, internalControlSecret);
+
 			const readyOk = await this.waitForReady(localTargetUrl, localApiKey);
 
 			if (!readyOk) {
-				await this.stopProcess();
-				return this.fail('readiness_failed', 'readiness', 'authenticated readiness check failed or timed out', {
+				if (this.requireReadyOnStart) {
+					await this.stopProcess();
+					return this.fail('readiness_failed', 'readiness', 'authenticated readiness check failed or timed out', {
+						port: portState.port,
+						localTargetUrl
+					});
+				}
+
+				return this.state.setPhase('running_health_only', {
 					port: portState.port,
-					localTargetUrl
+					localTargetUrl,
+					message: 'Codex auth required'
 				});
 			}
 
@@ -216,12 +252,17 @@ export class RuntimeSupervisor {
 				CODEX_AUTH_EXT_PORT: String(port),
 				CODEX_AUTH_EXT_HOST: host,
 				CODEX_AUTH_EXT_LOCAL_API_KEY: localApiKey,
-				CODEX_AUTH_EXT_INTERNAL_CONTROL_SECRET: internalControlSecret
+				CODEX_AUTH_EXT_INTERNAL_CONTROL_SECRET: internalControlSecret,
+				CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND: this.modelRoutingWorkaroundEnabled() ? '1' : '0',
+				CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: this.fakeCodexScenario ?? ''
 			}
 		});
 	}
 
 	private async stopProcess(): Promise<void> {
+		this.authPollAbort?.abort();
+		this.authPollAbort = null;
+
 		if (!this.process) {
 			return;
 		}
@@ -326,6 +367,73 @@ export class RuntimeSupervisor {
 		}
 
 		return false;
+	}
+
+	private startAuthPollLoop(localTargetUrl: string, internalControlSecret: string): void {
+		this.authPollAbort?.abort();
+		const abort = new AbortController();
+		this.authPollAbort = abort;
+
+		void this.runAuthPollLoop(localTargetUrl, internalControlSecret, abort.signal);
+	}
+
+	private async publishAuthStatus(
+		localTargetUrl: string,
+		internalControlSecret: string
+	): Promise<void> {
+		await this.fetchImpl(`${localTargetUrl}/internal/auth/status`, {
+			method: 'POST',
+			headers: {
+				[INTERNAL_CONTROL_HEADER]: internalControlSecret,
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({
+				codexAuthState: await this.getCodexAuthState()
+			})
+		});
+	}
+
+	private async runAuthPollLoop(
+		localTargetUrl: string,
+		internalControlSecret: string,
+		signal: AbortSignal
+	): Promise<void> {
+		while (!signal.aborted) {
+			try {
+				const response = await this.fetchImpl(`${localTargetUrl}/internal/auth-requests?waitMs=1000`, {
+					headers: {
+						[INTERNAL_CONTROL_HEADER]: internalControlSecret
+					},
+					signal
+				});
+
+				if (!response.ok) {
+					await sleep(250);
+					continue;
+				}
+
+				const body = (await response.json()) as { request?: PendingAuthRequest | null };
+				if (!body.request?.id) {
+					continue;
+				}
+
+				const handoffResponse = await this.authHandoffResponder(body.request);
+
+				await this.fetchImpl(`${localTargetUrl}/internal/auth-requests/${body.request.id}/response`, {
+					method: 'POST',
+					headers: {
+						[INTERNAL_CONTROL_HEADER]: internalControlSecret,
+						'content-type': 'application/json'
+					},
+					body: JSON.stringify(handoffResponse),
+					signal
+				});
+			} catch {
+				if (!signal.aborted) {
+					await sleep(250);
+				}
+			}
+		}
 	}
 
 	private async handleProcessExit(code: number | null, signal: NodeJS.Signals | null): Promise<void> {

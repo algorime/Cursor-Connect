@@ -69,7 +69,9 @@ describe('RuntimeSupervisor', () => {
 			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
 			credentials: new InMemoryCredentialStore(),
 			logger: new SafeRuntimeLogger({ write: () => {} }),
-			spawner
+			spawner,
+			getCodexAuthState: async () => 'authenticated',
+			requireReadyOnStart: true
 		});
 
 		const snapshot = await supervisor.start();
@@ -92,7 +94,9 @@ describe('RuntimeSupervisor', () => {
 			}),
 			credentials: new InMemoryCredentialStore(),
 			logger: new SafeRuntimeLogger({ write: () => {} }),
-			spawner
+			spawner,
+			getCodexAuthState: async () => 'authenticated',
+			requireReadyOnStart: true
 		});
 
 		const snapshot = await supervisor.start();
@@ -175,6 +179,7 @@ describe('RuntimeSupervisor', () => {
 			spawner,
 			readinessTimeoutMs: 500,
 			pollIntervalMs: 50,
+			requireReadyOnStart: true,
 			fetchImpl: async (input, init) => {
 				const url = String(input);
 
@@ -247,7 +252,9 @@ describe('RuntimeSupervisor', () => {
 			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
 			credentials: new InMemoryCredentialStore(),
 			logger: new SafeRuntimeLogger({ write: () => {} }),
-			spawner
+			spawner,
+			getCodexAuthState: async () => 'authenticated',
+			requireReadyOnStart: true
 		});
 
 		const first = await supervisor.start();
@@ -281,5 +288,113 @@ describe('RuntimeSupervisor', () => {
 		const stopped = await supervisor.stop();
 
 		expect(stopped.phase).toBe('stopped');
+	});
+
+	it('keeps the API running in repairable auth-required state on first run', async () => {
+		const portStore = new MemoryPortStore();
+		const port = await getFreePort();
+		await portStore.write({ host: LOOPBACK_HOST, port });
+
+		const spawner = new InProcessApiSpawner();
+		spawners.push(spawner);
+
+		const supervisor = new RuntimeSupervisor({
+			extensionPath: '/tmp/codex-auth-ext',
+			devMode: true,
+			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
+			credentials: new InMemoryCredentialStore(),
+			logger: new SafeRuntimeLogger({ write: () => {} }),
+			spawner,
+			getCodexAuthState: async () => 'not_configured',
+			readinessTimeoutMs: 200,
+			pollIntervalMs: 50
+		});
+
+		const snapshot = await supervisor.start();
+
+		expect(snapshot.phase).toBe('running_health_only');
+		expect(snapshot.message).toBe('Codex auth required');
+		expect(snapshot.localTargetUrl).toBe(`http://${LOOPBACK_HOST}:${port}`);
+	});
+
+	it('passes forced refresh handoff reason through the auth poll loop', async () => {
+		const portStore = new MemoryPortStore();
+		const port = await getFreePort();
+		await portStore.write({ host: LOOPBACK_HOST, port });
+		const seenReasons: string[] = [];
+		const credentials = new InMemoryCredentialStore();
+
+		const spawner = new InProcessApiSpawner();
+		spawners.push(spawner);
+
+		const supervisor = new RuntimeSupervisor({
+			extensionPath: '/tmp/codex-auth-ext',
+			devMode: true,
+			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
+			credentials,
+			logger: new SafeRuntimeLogger({ write: () => {} }),
+			spawner,
+			getCodexAuthState: async () => 'authenticated',
+			fakeCodexScenario: 'auth_401_then_success',
+			authHandoffResponder: async (request) => {
+				seenReasons.push(request.reason);
+				return {
+					ok: true,
+					context: {
+						accessToken: 'fixture-access-token',
+						expiresAt: Date.now() + 60_000,
+						localAccountKey: 'acct_fixture'
+					}
+				};
+			},
+			requireReadyOnStart: true
+		});
+
+		const snapshot = await supervisor.start();
+		expect(snapshot.phase).toBe('ready');
+
+		const response = await fetch(`${snapshot.localTargetUrl}/v1/chat/completions`, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${await credentials.getLocalApiKey()}`,
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({ model: 'gpt-5.4', stream: true, input: [] })
+		});
+
+		expect(response.status).toBe(200);
+		expect(seenReasons).toEqual(['normal', 'forced_refresh_after_401']);
+		await supervisor.stop();
+	});
+
+	it('passes the persisted Harness Routing Workaround setting to the API process', async () => {
+		const portStore = new MemoryPortStore();
+		const port = await getFreePort();
+		await portStore.write({ host: LOOPBACK_HOST, port });
+		let capturedEnv: NodeJS.ProcessEnv | null = null;
+
+		const spawner = new InProcessApiSpawner();
+		const supervisor = new RuntimeSupervisor({
+			extensionPath: '/tmp/codex-auth-ext',
+			devMode: true,
+			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
+			credentials: new InMemoryCredentialStore(),
+			logger: new SafeRuntimeLogger({ write: () => {} }),
+			spawner: {
+				spawn(request) {
+					capturedEnv = request.env;
+					return spawner.spawn(request);
+				}
+			},
+			getCodexAuthState: async () => 'authenticated',
+			modelRoutingWorkaroundEnabled: () => true,
+			requireReadyOnStart: true
+		});
+		spawners.push(spawner);
+
+		const snapshot = await supervisor.start();
+
+		expect(snapshot.phase).toBe('ready');
+		expect(capturedEnv?.CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND).toBe('1');
 	});
 });

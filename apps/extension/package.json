@@ -25,6 +25,22 @@
 			{
 				"command": "codexAuthExt.restartRuntime",
 				"title": "Codex Auth: Restart Runtime"
+			},
+			{
+				"command": "codexAuthExt.signInCodex",
+				"title": "Codex Auth: Sign In to Codex"
+			},
+			{
+				"command": "codexAuthExt.importCodexAuthJson",
+				"title": "Codex Auth: Import Codex CLI Auth"
+			},
+			{
+				"command": "codexAuthExt.logoutCodex",
+				"title": "Codex Auth: Logout Codex"
+			},
+			{
+				"command": "codexAuthExt.enableGpt55Workaround",
+				"title": "Codex Auth: Enable GPT-5.5 Workaround"
 			}
 		]
 	},

@@ -1,0 +1,5 @@
+{
+	"name": "@codex-auth-ext/scripts",
+	"private": true,
+	"type": "module"
+}

@@ -3,3 +3,24 @@ harness-capture/captures/
 harness-capture/server.log
 __pycache__/
 *.pyc
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+bundle/
+lib/
+out/
+*.vsix
+
+# Extension-packaged runtime artifacts are generated during build
+apps/extension/api/
+
+# Tooling caches
+.vite/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+*.log

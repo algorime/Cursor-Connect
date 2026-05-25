@@ -1,0 +1,30 @@
+{
+	"name": "@codex-auth-ext/shared",
+	"type": "module",
+	"main": "./lib/index.cjs",
+	"types": "./lib/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./lib/index.d.ts",
+			"import": "./lib/index.js",
+			"require": "./lib/index.cjs",
+			"default": "./lib/index.js"
+		}
+	},
+	"files": [
+		"lib"
+	],
+	"scripts": {
+		"build": "pnpm run clean && tsup",
+		"clean": "rm -rf lib",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"lint": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "~22.15.35",
+		"tsup": "~8.5.1",
+		"typescript": "~5.7.0",
+		"vitest": "~4.0.18"
+	}
+}

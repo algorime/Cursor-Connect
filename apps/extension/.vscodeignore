@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+node_modules/**
+src/**
+tests/**
+scripts/**
+**/*.map
+vitest.config.mts
+tsconfig.json
+tsup.config.ts
+package-lock.json
+pnpm-lock.yaml

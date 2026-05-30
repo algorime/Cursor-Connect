@@ -58,9 +58,11 @@ describe('packaged extension layout', () => {
 
 	it('stages the api bundle inside the extension install tree', () => {
 		const packagedEntry = path.join(extensionRoot, 'api/bundle/main.cjs');
+		const dashboardManifest = path.join(extensionRoot, 'dashboard/.vite/manifest.json');
 
 		expect(fs.existsSync(packagedEntry)).toBe(true);
 		expect(fs.existsSync(path.join(extensionRoot, 'dist/extension.js'))).toBe(true);
+		expect(fs.existsSync(dashboardManifest)).toBe(true);
 	});
 
 	it('resolves the packaged api bundle from the extension path', () => {

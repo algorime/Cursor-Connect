@@ -39,9 +39,10 @@ const plugin: FastifyPluginCallback<ReadyRouteOptions> = (app, opts, done) => {
 			return reply.status(auth.statusCode).send(auth.body);
 		}
 
-		const body: ReadyResponse = {
-			ready: opts.readinessState.isReady()
-		};
+		const status = opts.readinessState.getInternalStatus();
+		const body: ReadyResponse = status.runtimeId
+			? { ready: opts.readinessState.isReady(), runtimeId: status.runtimeId }
+			: { ready: opts.readinessState.isReady() };
 
 		return reply.send(body);
 	});

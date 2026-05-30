@@ -133,12 +133,12 @@ Conclusion: `custom` reaches the Extension Base URL, but it does not preserve th
 
 ## Product Implication
 
-For V1 Codex Auth-First routing, prefer a Harness-Routed OpenAI built-in Cursor-Facing Model ID such as `gpt-5.4`. For the known `gpt-5.5` Cursor routing limitation, expose a small opt-in Harness Routing Workaround that can route `gpt-5.4` to upstream `gpt-5.5`.
+For the original V1 probe, the safest path was a Harness-Routed OpenAI built-in Cursor-Facing Model ID such as `gpt-5.4`. ADR-0122 supersedes that recommendation for the current Phase 3 release posture: while fresh release proof or equivalent verifier evidence confirms direct routing, prefer direct Cursor-facing `gpt-5.5`; keep the `gpt-5.4` to upstream `gpt-5.5` Harness Routing Workaround as a small opt-in fallback only.
 
-This is recommended despite imperfect 1:1 harness labeling. Built-in `gpt-5.4` starts with `You are GPT-5.4.`, so upstream `gpt-5.5` may receive same-family GPT-5.4-shaped harness text. The product decision is that `gpt-5.5` upstream quality is still preferred over avoiding the workaround.
+The workaround was previously recommended despite imperfect 1:1 harness labeling. Built-in `gpt-5.4` starts with `You are GPT-5.4.`, so upstream `gpt-5.5` may receive same-family GPT-5.4-shaped harness text. Under ADR-0122, that tradeoff is no longer the normal first-run setup path while direct `gpt-5.5` is verified.
 
 Do not treat arbitrary custom model IDs as equivalent to built-in model IDs. They are useful for diagnostics because they prove the Extension Base URL can be reached, but they should not be a user-facing fallback because they produce a materially different and weaker harness. Also do not expose Azure-era general rewrite-table complexity for V1.
 
 This is also why V1 should avoid non-Codex provider surfaces. The `custom` capture proves that simply reaching the Extension Base URL can be lower quality than using a Harness-Routed Model, so enabling future integrations without a proven Cursor-Facing Model ID strategy would likely produce worse UX/performance.
 
-V1 should not expose `custom` as a user-facing fallback. Setup should use Cursor's built-in OpenAI model list and the proven OpenAI-family Harness-Routed Models instead.
+V1 should not expose `custom` as a user-facing fallback. Setup should use Cursor's built-in OpenAI model list and the currently verified direct OpenAI-family model path, with Harness-Routed fallback behavior retained only as an explicit compatibility escape hatch.

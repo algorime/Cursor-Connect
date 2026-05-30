@@ -1,19 +1,35 @@
+import type { ModelWorkaroundDecision } from '@codex-auth-ext/shared';
+
 export interface ExtensionStateStore {
 	get<T>(key: string): T | undefined;
 	update(key: string, value: unknown): Promise<void>;
 }
 
 const ROUTING_WORKAROUND_KEY = 'codexAuthExt.routing.gpt54ToGpt55WorkaroundEnabled';
+const ROUTING_WORKAROUND_DECISION_KEY = 'codexAuthExt.routing.gpt54ToGpt55WorkaroundDecision';
 
 export class ModelRoutingSettingsStore {
 	constructor(private readonly state: ExtensionStateStore) {}
 
+	getGpt54ToGpt55WorkaroundDecision(): ModelWorkaroundDecision {
+		const decision = this.state.get<ModelWorkaroundDecision>(ROUTING_WORKAROUND_DECISION_KEY);
+		if (decision) {
+			return decision;
+		}
+		return this.state.get<boolean>(ROUTING_WORKAROUND_KEY) ? 'enabled' : 'decide_later';
+	}
+
+	async setGpt54ToGpt55WorkaroundDecision(decision: ModelWorkaroundDecision): Promise<void> {
+		await this.state.update(ROUTING_WORKAROUND_DECISION_KEY, decision);
+		await this.state.update(ROUTING_WORKAROUND_KEY, decision === 'enabled');
+	}
+
 	getGpt54ToGpt55WorkaroundEnabled(): boolean {
-		return this.state.get<boolean>(ROUTING_WORKAROUND_KEY) ?? false;
+		return this.getGpt54ToGpt55WorkaroundDecision() === 'enabled';
 	}
 
 	async setGpt54ToGpt55WorkaroundEnabled(enabled: boolean): Promise<void> {
-		await this.state.update(ROUTING_WORKAROUND_KEY, enabled);
+		await this.setGpt54ToGpt55WorkaroundDecision(enabled ? 'enabled' : 'skipped');
 	}
 }
 

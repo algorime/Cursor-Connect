@@ -1,3 +1,4 @@
+import type { ApiTrafficStatus } from './api-runtime.js';
 export const LOOPBACK_HOST = '127.0.0.1' as const;
 
 export const PORT_RANGE_MIN = 49152;
@@ -43,6 +44,7 @@ export type RuntimeFailureCategory =
 	| 'none';
 
 export interface RuntimeSnapshot {
+	runtimeId?: string;
 	phase: RuntimePhase;
 	failureCategory: RuntimeFailureCategory;
 	localTargetUrl: string | null;
@@ -91,6 +93,7 @@ export interface SafeLogEvent {
 
 export interface ReadyResponse {
 	ready: boolean;
+	runtimeId?: string;
 }
 
 export interface InternalControlPingResponse {
@@ -140,6 +143,8 @@ export type ProxyState =
 	| 'storage_degraded';
 
 export interface InternalStatusResponse {
+	runtimeId?: string;
+	traffic: ApiTrafficStatus;
 	controlConfigured: boolean;
 	controlAuthenticated: boolean;
 	authHandoffConnected: boolean;
@@ -311,3 +316,11 @@ export const SECRET_FIELD_NAMES = [
 	'refreshToken',
 	'oauthToken'
 ] as const;
+
+export * from './api-runtime.js';
+export * from './public-url.js';
+export * from './doctor.js';
+export * from './status-bar.js';
+export * from './dashboard-bridge.js';
+export * from './tunnel.js';
+export * from './setup-state.js';

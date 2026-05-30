@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const extensionRoot = path.join(repoRoot, 'apps/extension');
 const packagedBundle = path.join(extensionRoot, 'api/bundle/main.cjs');
 const packagedSqlWasm = path.join(extensionRoot, 'api/bundle/sql-wasm.wasm');
+const packagedDashboardManifest = path.join(extensionRoot, 'dashboard/.vite/manifest.json');
 const extensionEntry = path.join(extensionRoot, 'dist/extension.js');
 
 async function getFreePort() {
@@ -35,12 +37,35 @@ test('packaged extension layout contains dist entrypoint and staged api bundle',
 	assert.equal(fs.existsSync(extensionEntry), true, 'expected dist/extension.js in packaged layout');
 	assert.equal(fs.existsSync(packagedBundle), true, 'expected api/bundle/main.cjs staged under extension');
 	assert.equal(fs.existsSync(packagedSqlWasm), true, 'expected sql-wasm.wasm staged under extension api bundle');
+	assert.equal(fs.existsSync(packagedDashboardManifest), true, 'expected Svelte dashboard manifest staged under extension');
 });
 
-test('extension-staged api bundle starts and serves health/ready/control boundaries', async () => {
+test('extension-staged api bundle starts and verifies packaged model routing', async () => {
+	await runPackagedApiProbe({
+		workaroundEnabled: true,
+		cursorModel: 'gpt-5.4',
+		expectedUpstreamModel: 'gpt-5.5',
+		reasoning: { effort: 'medium', summary: 'auto' }
+	});
+	await runPackagedApiProbe({
+		workaroundEnabled: false,
+		cursorModel: 'gpt-5.4',
+		expectedUpstreamModel: 'gpt-5.4',
+		reasoning: { effort: 'high', summary: 'auto' }
+	});
+	await runPackagedApiProbe({
+		workaroundEnabled: false,
+		cursorModel: 'gpt-5.5',
+		expectedUpstreamModel: 'gpt-5.5',
+		reasoning: { effort: 'low', summary: 'auto' }
+	});
+});
+
+async function runPackagedApiProbe({ workaroundEnabled, cursorModel, expectedUpstreamModel, reasoning }) {
 	const port = await getFreePort();
 	const localApiKey = 'smoke-local-api-key';
 	const internalControlSecret = 'smoke-internal-control-secret';
+	const upstream = await startUpstreamCaptureServer();
 	const usageDbPath = path.join(
 		await fs.promises.mkdtemp(path.join(osTmpDir(), 'codex-auth-smoke-usage-')),
 		'usage.sqlite'
@@ -54,8 +79,8 @@ test('extension-staged api bundle starts and serves health/ready/control boundar
 			CODEX_AUTH_EXT_HOST: '127.0.0.1',
 			CODEX_AUTH_EXT_LOCAL_API_KEY: localApiKey,
 			CODEX_AUTH_EXT_INTERNAL_CONTROL_SECRET: internalControlSecret,
-			CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND: '1',
-			CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: 'success_text',
+			CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND: workaroundEnabled ? '1' : '0',
+			CODEX_AUTH_EXT_CODEX_RESPONSES_URL: upstream.url,
 			CODEX_AUTH_EXT_USAGE_DB_PATH: usageDbPath
 		},
 		stdio: ['ignore', 'pipe', 'pipe']
@@ -112,7 +137,7 @@ test('extension-staged api bundle starts and serves health/ready/control boundar
 		});
 		const modelsBody = await models.json();
 		assert.equal(models.status, 200);
-		assert.deepEqual(modelsBody.data.map((model) => model.id), ['gpt-5.4', 'gpt-5.4-mini']);
+		assert.deepEqual(modelsBody.data.map((model) => model.id), ['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4']);
 
 		const chat = await fetch(`${baseUrl}/v1/chat/completions`, {
 			method: 'POST',
@@ -121,17 +146,27 @@ test('extension-staged api bundle starts and serves health/ready/control boundar
 				'content-type': 'application/json'
 			},
 			body: JSON.stringify({
-				model: 'gpt-5.4',
+				model: cursorModel,
 				stream: true,
-				input: [{ role: 'user', content: 'synthetic smoke prompt' }]
+				input: [{ role: 'user', content: 'synthetic smoke prompt' }],
+				reasoning,
+				metadata: {
+					cursorConversationId: `smoke-routing-${cursorModel}-${workaroundEnabled ? 'enabled' : 'disabled'}`
+				}
 			})
 		});
 		const chatBody = await chat.text();
 		await pollPromise;
 
 		assert.equal(chat.status, 200);
-		assert.match(chatBody, /Hello from Codex/);
+		assert.match(chatBody, /packaged upstream fixture/);
 		assert.match(chatBody, /\[DONE\]/);
+		assert.equal(upstream.requests.length, 1, 'expected one upstream Codex Responses POST');
+		assert.equal(upstream.requests[0].method, 'POST');
+		assert.equal(upstream.requests[0].body.model, expectedUpstreamModel);
+		assert.deepEqual(upstream.requests[0].body.reasoning, reasoning);
+		assert.equal(upstream.requests[0].body.prompt_cache_key, `smoke-routing-${cursorModel}-${workaroundEnabled ? 'enabled' : 'disabled'}`);
+		assert.equal(Object.hasOwn(upstream.requests[0].body, 'metadata'), false);
 
 		const usage = await fetch(`${baseUrl}/internal/usage/records`, {
 			headers: { 'x-internal-control-secret': internalControlSecret }
@@ -141,13 +176,16 @@ test('extension-staged api bundle starts and serves health/ready/control boundar
 		assert.equal(usage.status, 200);
 		assert.equal(usageBody.records.length, 1);
 		assert.equal(usageBody.records[0].status, 'completed');
+		assert.equal(usageBody.records[0].cursorFacingModelId, cursorModel);
+		assert.equal(usageBody.records[0].upstreamModelId, expectedUpstreamModel);
 		assert.doesNotMatch(usageSerialized, /synthetic smoke prompt|smoke-access-token|authorization|email/i);
 		assert.equal(fs.existsSync(usageDbPath), true, 'expected smoke usage sqlite database');
 	} finally {
 		child.kill('SIGTERM');
 		await new Promise((resolve) => child.once('exit', resolve));
+		await upstream.close();
 	}
-});
+}
 
 test('extension packaging supervisor test passes', async () => {
 	const { spawnSync } = await import('node:child_process');
@@ -188,6 +226,52 @@ async function answerOneAuthRequest(baseUrl, internalControlSecret) {
 		})
 	});
 	assert.equal(response.status, 200);
+}
+
+async function startUpstreamCaptureServer() {
+	const requests = [];
+	const server = http.createServer(async (request, response) => {
+		const bodyText = await readRequestBody(request);
+		requests.push({
+			method: request.method,
+			url: request.url,
+			headers: request.headers,
+			body: bodyText ? JSON.parse(bodyText) : null
+		});
+		response.writeHead(200, {
+			'content-type': 'text/event-stream',
+			'cache-control': 'no-cache'
+		});
+		response.end([
+			'data: {"type":"response.output_text.delta","delta":"packaged upstream fixture"}',
+			'',
+			'data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}',
+			'',
+			''
+		].join('\n'));
+	});
+	const port = await getFreePort();
+	await new Promise((resolve, reject) => {
+		server.once('error', reject);
+		server.listen(port, '127.0.0.1', () => {
+			server.off('error', reject);
+			resolve();
+		});
+	});
+
+	return {
+		url: `http://127.0.0.1:${port}/backend-api/codex/responses`,
+		requests,
+		close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+	};
+}
+
+async function readRequestBody(request) {
+	let body = '';
+	for await (const chunk of request) {
+		body += String(chunk);
+	}
+	return body;
 }
 
 function osTmpDir() {

@@ -17,8 +17,10 @@ export class RuntimeStateModel {
 		localTargetUrl?: string | null;
 		port?: number | null;
 		message?: string | null;
+		runtimeId?: string;
 	}): RuntimeSnapshot {
 		this.snapshot = {
+			runtimeId: details?.runtimeId ?? this.snapshot.runtimeId,
 			phase,
 			failureCategory: details?.failureCategory ?? this.inferFailureCategory(phase),
 			localTargetUrl: details?.localTargetUrl ?? this.snapshot.localTargetUrl,

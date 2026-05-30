@@ -6,6 +6,7 @@ const INTERNAL_CONTROL_SECRET_KEY = 'codexAuthExt.internalControlSecret';
 
 export interface CredentialStore {
 	getLocalApiKey(): Promise<string>;
+	rotateLocalApiKey(): Promise<string>;
 	getInternalControlSecret(): Promise<string>;
 }
 
@@ -22,6 +23,12 @@ export class SecretStorageCredentialStore implements CredentialStore {
 		const created = generateSecret();
 		await this.secrets.store(LOCAL_API_KEY_KEY, created);
 
+		return created;
+	}
+
+	async rotateLocalApiKey(): Promise<string> {
+		const created = generateSecret();
+		await this.secrets.store(LOCAL_API_KEY_KEY, created);
 		return created;
 	}
 
@@ -49,6 +56,11 @@ export class InMemoryCredentialStore implements CredentialStore {
 	}
 
 	async getLocalApiKey(): Promise<string> {
+		return this.localApiKey;
+	}
+
+	async rotateLocalApiKey(): Promise<string> {
+		this.localApiKey = generateSecret();
 		return this.localApiKey;
 	}
 

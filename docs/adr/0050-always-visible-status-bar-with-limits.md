@@ -10,8 +10,10 @@ The status bar item is the primary supported integrated surface for this in VS C
 
 - The status bar item should be on by default and configurable by the user.
 - The compact text should show high-signal state such as `Codex: Ready`, `Codex: Setup`, `Codex: Limited`, `Codex: Error`, or a compact limit indicator when quota data is available.
+- During setup, the compact text should prefer the most actionable auth/route state, such as `Codex: Auth needed`, `Codex: Tunnel needed`, `Codex: Route stale`, `Codex: Setup blocked`, or `Codex: Ready`.
 - When useful and not too noisy, the status bar may show approximate quota window state such as remaining percentage, limited state, stale quota data, or Active Codex Account state.
 - Hover tooltip should provide richer details: Active Codex Account, quota windows, last quota refresh/stale state, tunnel/API/auth state, and last switch event when relevant.
+- The status bar is ambient, not a mini dashboard; detailed auth, Public Route URL, Quick Tunnel, `/health`, `/ready`, and Runtime Proof information belongs in the tooltip and dashboard rather than in long status text.
 - When all eligible accounts are blocked, the status bar should show a compact limited/error state and tooltip should include earliest known reset time and blocked account categories when safe.
 - If only manual-only accounts are available, the tooltip should distinguish them from blocked accounts and point the user to manual switch controls.
 - Clicking the item should open the dashboard to the relevant state-aware view.

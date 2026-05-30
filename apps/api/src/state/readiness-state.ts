@@ -1,4 +1,6 @@
+import { createEmptyApiTrafficStatus, recordCursorFacingTraffic } from '@codex-auth-ext/shared';
 import type {
+	ApiTrafficStatus,
 	CodexAuthState,
 	InternalStatusResponse,
 	ModelPolicyState,
@@ -14,14 +16,17 @@ export class ReadinessState {
 	private modelPolicyState: ModelPolicyState = 'workaround_disabled';
 	private proxyState: ProxyState = 'auth_not_ready';
 	private usageStorageState: 'ready' | 'degraded' = 'ready';
+	private traffic: ApiTrafficStatus = createEmptyApiTrafficStatus();
+	private readonly runtimeId: string | undefined;
 	private readonly now: () => number;
 	private readonly authHandoffLeaseMs: number;
 
 	constructor(
 		controlConfigured: boolean,
-		options: { now?: () => number; authHandoffLeaseMs?: number } = {}
+		options: { now?: () => number; authHandoffLeaseMs?: number; runtimeId?: string }
 	) {
 		this.controlConfigured = controlConfigured;
+		this.runtimeId = options.runtimeId;
 		this.now = options.now ?? Date.now;
 		this.authHandoffLeaseMs = options.authHandoffLeaseMs ?? 5_000;
 	}
@@ -75,9 +80,19 @@ export class ReadinessState {
 		return this.controlAuthenticated;
 	}
 
+	recordCursorFacingRequest(method: string, path: string): void {
+		this.traffic = recordCursorFacingTraffic(this.traffic, {
+			method,
+			path,
+			at: this.now()
+		});
+	}
+
 	getInternalStatus(): InternalStatusResponse {
 		this.recomputeProxyState();
 		return {
+			runtimeId: this.runtimeId,
+			traffic: structuredClone(this.traffic),
 			controlConfigured: this.controlConfigured,
 			controlAuthenticated: this.controlAuthenticated,
 			authHandoffConnected: this.authHandoffConnected,

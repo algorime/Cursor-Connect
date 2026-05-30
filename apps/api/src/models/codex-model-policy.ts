@@ -20,7 +20,7 @@ export interface ResolvedModelRoute {
 export function listSupportedModels(settings: ModelRoutingSettings): CodexModelEntry[] {
 	const supportedModelIds = settings.supportedModelIds?.length
 		? settings.supportedModelIds
-		: ['gpt-5.4', 'gpt-5.4-mini'];
+		: ['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4'];
 	const models = supportedModelIds.map((modelId) => resolveModelRoute(modelId, settings));
 
 	if (models.some((model) => !model)) {
@@ -33,8 +33,8 @@ export function listSupportedModels(settings: ModelRoutingSettings): CodexModelE
 		owned_by: 'codex-auth-first',
 		upstreamModelId: route?.upstreamModelId ?? '',
 		supported: true,
-		recommended: route?.cursorFacingModelId === 'gpt-5.4',
-		workaroundRequired: route?.cursorFacingModelId === 'gpt-5.4',
+		recommended: route?.cursorFacingModelId === 'gpt-5.5',
+		workaroundRequired: route?.policyState === 'workaround_enabled',
 		policyState: route?.policyState ?? 'protocol_shape_changed'
 	}));
 }
@@ -72,6 +72,14 @@ export function resolveModelRoute(
 		return {
 			cursorFacingModelId: 'gpt-5.4-mini',
 			upstreamModelId: 'gpt-5.4-mini',
+			policyState: 'ready'
+		};
+	}
+
+	if (model === 'gpt-5.5') {
+		return {
+			cursorFacingModelId: 'gpt-5.5',
+			upstreamModelId: 'gpt-5.5',
 			policyState: 'ready'
 		};
 	}

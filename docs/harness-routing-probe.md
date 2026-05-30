@@ -69,7 +69,7 @@ Smoke test completed successfully on port `5058`: `/health`, `/v1/models`, and a
 | --- | --- | --- | --- |
 | `gpt-5.4` built-in | Yes | Responses-shaped | Captured as `20260524-180636-cf145060.json`. User clarified the prompt text said `model=5.5`, but the selected Cursor model was actually `gpt-5.4`. |
 | `gpt-5.4-mini` built-in | Yes | Responses-shaped | Captured as `20260524-180723-3f16d29e.json`. |
-| `gpt-5.5` built-in | No | None | Known Cursor-side routing limitation; does not reach the custom OpenAI Base URL. Existing workaround is to route `gpt-5.4` upstream to `gpt-5.5`. |
+| `gpt-5.5` built-in | Verified for Phase 3 release contract | Responses-shaped proof fixture plus packaged smoke | Historical May 24 live capture did not reach the server, but ADR-0122 supersedes that posture. Phase 3 carries sanitized verifier evidence in `harness-capture/release-proof/direct-gpt-5.5-phase3.json` and packaged runtime smoke coverage. |
 | `gpt-5-codex` built-in | Not pursued | None | Considered too old to matter for this product direction. |
 | Claude Opus 4.7 built-in | No | None | User saw a normal answer but no capture file, so it likely routed to Cursor's own backend/provider path. |
 | `codex-gpt-5.5-capture` custom alias | No | None | Routed to Cursor backend and errored before reaching the harness. |
@@ -79,15 +79,14 @@ Smoke test completed successfully on port `5058`: `/health`, `/v1/models`, and a
 ## Observed Findings
 
 - Built-in `gpt-5.4` and `gpt-5.4-mini` are Harness-Routed Models: they reach the Extension Base URL and preserve Cursor's OpenAI-family agent harness.
-- Actual built-in `gpt-5.5` is not a Harness-Routed Model in this environment; it does not reach the capture server.
-- The existing workaround remains important and recommended: expose/select `gpt-5.4` as the Cursor-Facing Model ID and rewrite the Upstream Model ID to `gpt-5.5`.
-- The workaround accepts prompt/model label skew because upstream `gpt-5.5` quality is preferred even when Cursor preserves the same-family `gpt-5.4` harness.
-- If Cursor later supports direct built-in `gpt-5.5` routing to the Extension Base URL, a fresh Harness Capture should promote direct `gpt-5.5` and retire the workaround for new setup.
+- Actual built-in `gpt-5.5` was not a Harness-Routed Model in the historical May 24 environment; it did not reach the capture server then.
+- ADR-0122 records the current Phase 3 posture: direct `gpt-5.5` is the normal recommendation while release proof or equivalent verifier evidence confirms it reaches the Extension Base URL with the expected shape. The current non-secret proof artifact is documented in `docs/direct-gpt-5-5-release-proof.md`.
+- The existing `gpt-5.4` to upstream `gpt-5.5` workaround remains an explicit advanced fallback, not the normal setup recommendation.
 - Built-in Claude Opus 4.7 is not Harness-Routed here; it appears to bypass the Extension Base URL and route through Cursor's normal model backend.
 - Arbitrary provider-looking custom aliases are not reliable in Cursor: `codex-gpt-5.5-capture` and `claude-opus-4.7-capture` did not produce captures.
 - Literal `custom` does route through the Extension Base URL, but the body is generic Chat Completions-shaped rather than Cursor's richer OpenAI Responses-shaped harness.
 - Because `custom` loses the richer harness, V1 setup should not expose it as a user-facing fallback; use Cursor's built-in OpenAI model list instead.
-- V1 should not expose a general manual model-routing UI for this. The known `gpt-5.5` limitation should be handled as a small user-visible Harness Routing Workaround: ask whether to route `gpt-5.4` to upstream `gpt-5.5`.
+- V1 should not expose a general manual model-routing UI for this. If direct `gpt-5.5` regresses again, the known fallback is the small explicit Harness Routing Workaround that routes `gpt-5.4` to upstream `gpt-5.5`.
 - `custom` should not become the fallback if model routing changes; the evidence-based fallback is to re-run Harness Capture and keep only verified built-in OpenAI-family model paths user-facing.
 - If Cursor changes routing or request shape, diagnostic Harness Capture should produce evidence for a future extension update or explicit repair step; V1 should not silently patch unknown model-routing changes with downloaded rules.
 

@@ -1,17 +1,19 @@
 # Prefer GPT-5.5 Despite Harness Label Skew
 
-Status: accepted
+Status: superseded by ADR-0122
 
-V1 should recommend routing Cursor-Facing `gpt-5.4` to Upstream `gpt-5.5` as the best known model-quality path, even though Cursor's captured harness may still label or prompt the request as GPT-5.4.
+This ADR captured the older workaround-first posture: V1 recommended routing Cursor-Facing `gpt-5.4` to Upstream `gpt-5.5` as the best known model-quality path, even though Cursor's captured harness could still label or prompt the request as GPT-5.4.
 
-The mismatch is not ideal, but it is acceptable because `gpt-5.4` and `gpt-5.5` are same-family OpenAI/Codex models and the upstream `gpt-5.5` quality gain is more important than exact 1:1 harness labeling. Direct Cursor-Facing `gpt-5.5` is still not a working path until a future Harness Capture proves it reaches the Extension Base URL.
+ADR-0122 supersedes that posture for current Phase 3: while direct routing is verified, setup recommends direct Cursor-facing `gpt-5.5` and keeps the GPT-5.4-to-GPT-5.5 Harness Routing Workaround as an explicit advanced fallback only.
+
+The mismatch is not ideal, but it remains acceptable as a fallback because `gpt-5.4` and `gpt-5.5` are same-family OpenAI/Codex models and the upstream `gpt-5.5` quality gain can be more important than exact 1:1 harness labeling. This tradeoff is relevant only if direct Cursor-Facing `gpt-5.5` regresses and fresh Harness Capture or equivalent release evidence proves the fallback is safer.
 
 ## Consequences
 
-- The recommended setup remains: select `gpt-5.4` in Cursor, then enable the Harness Routing Workaround to send the request upstream as `gpt-5.5`.
+- The recommended setup no longer selects `gpt-5.4` first; it selects direct Cursor-facing `gpt-5.5` while that path is verified.
 - Setup copy should be honest: Cursor may display and shape the request as `gpt-5.4`, while the extension sends it to Codex as `gpt-5.5`.
-- The workaround should be strongly recommended during first-run setup because upstream `gpt-5.5` is preferred 100% for quality under the current evidence.
+- The workaround should not be strongly recommended during first-run setup while ADR-0122's direct path holds.
 - This is still a specific known workaround, not a general manual model-routing UI.
-- If a future Harness Capture proves direct `gpt-5.5` reaches the Extension Base URL with a good harness, V1 can stop recommending the `gpt-5.4` route workaround.
-- The expected future migration is direct built-in `gpt-5.5` routing becoming Harness-Routed, not falling back to `custom`.
-- Diagnostic docs should preserve the evidence: built-in `gpt-5.4` is Harness-Routed, direct built-in `gpt-5.5` is not currently Harness-Routed, and custom model IDs lose the richer OpenAI-family harness.
+- If future evidence proves direct `gpt-5.5` no longer reaches the Extension Base URL with a good harness, V1 can reactivate the explicit `gpt-5.4` route workaround.
+- The preferred posture is direct built-in `gpt-5.5` routing, not falling back to `custom`.
+- Diagnostic docs should preserve both evidence eras: the historical May 24 capture set showed built-in `gpt-5.4` as Harness-Routed and direct built-in `gpt-5.5` as not captured, while the current Phase 3 release posture relies on ADR-0122 direct-model proof artifacts before recommending direct `gpt-5.5`.

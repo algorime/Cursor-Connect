@@ -10,6 +10,7 @@ import { createApiServer, startApiServer } from '../src/server.js';
 
 const localApiKey = 'test-local-api-key-value';
 const internalControlSecret = 'test-internal-control-secret-value';
+const AUTH_QUEUE_TEST_POLL_MS = 1_000;
 
 describe('/health', () => {
 	it('returns minimal unauthenticated liveness', async () => {
@@ -212,6 +213,78 @@ describe('/ready', () => {
 
 		expect(body).not.toMatch(/model|account|tunnel|quota|path|setup/i);
 	});
+	describe('runtime proof', () => {
+		it('returns non-secret runtime proof only to authenticated /ready callers', async () => {
+			const handle = createApiServer({
+				port: 0,
+				localApiKey,
+				internalControlSecret,
+				runtimeId: 'runtime-test-id'
+			});
+
+			handle.readinessState.markControlAuthenticated();
+			handle.readinessState.markAuthHandoffConnected();
+			handle.readinessState.setCodexAuthState('authenticated');
+
+			const ready = await handle.app.inject({
+				method: 'GET',
+				url: '/ready',
+				headers: {
+					authorization: `Bearer ${localApiKey}`
+				}
+			});
+			const rejected = await handle.app.inject({ method: 'GET', url: '/ready' });
+
+			expect(ready.statusCode).toBe(200);
+			expect(ready.json()).toEqual({ ready: true, runtimeId: 'runtime-test-id' });
+			expect(JSON.stringify(ready.json())).not.toContain(localApiKey);
+			expect(rejected.statusCode).toBe(401);
+			expect(rejected.json()).toEqual({ error: 'unauthorized' });
+		});
+
+		it('exposes safe last authenticated Cursor traffic on internal status only', async () => {
+			let now = 10_000;
+			const handle = createApiServer({
+				port: 0,
+				localApiKey,
+				internalControlSecret,
+				runtimeId: 'runtime-traffic-id',
+				now: () => now
+			});
+
+			await handle.app.inject({ method: 'GET', url: '/v1/models' });
+			now = 10_500;
+			await handle.app.inject({
+				method: 'GET',
+				url: '/v1/models',
+				headers: {
+					authorization: `Bearer ${localApiKey}`
+				}
+			});
+
+			const internal = await handle.app.inject({
+				method: 'GET',
+				url: '/internal/status',
+				headers: {
+					[INTERNAL_CONTROL_HEADER]: internalControlSecret
+				}
+			});
+
+			expect(internal.statusCode).toBe(200);
+			expect(internal.json()).toMatchObject({
+				runtimeId: 'runtime-traffic-id',
+				traffic: {
+					lastCursorFacingRequest: {
+						method: 'GET',
+						path: '/v1/models',
+						at: 10_500
+					}
+				}
+			});
+			expect(JSON.stringify(internal.json())).not.toMatch(/localApiKey|internalControlSecret|test-local-api-key-value|prompt|body/i);
+		});
+	});
+
 });
 
 describe('internal control boundary', () => {
@@ -364,7 +437,7 @@ describe('/v1/models', () => {
 		expect(internal.statusCode).toBe(403);
 	});
 
-	it('returns a conservative Codex-specific model list', async () => {
+	it('returns a conservative direct-model-first Codex-specific model list with the explicit fallback alive', async () => {
 		const handle = createApiServer({
 			port: 0,
 			localApiKey,
@@ -383,12 +456,52 @@ describe('/v1/models', () => {
 		const body = response.json();
 
 		expect(response.statusCode).toBe(200);
-		expect(body.data.map((model: { id: string }) => model.id)).toEqual(['gpt-5.4', 'gpt-5.4-mini']);
+		expect(body.data.map((model: { id: string }) => model.id)).toEqual(['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4']);
 		expect(JSON.stringify(body)).not.toMatch(/custom|account|path|secret/i);
 		expect(body.data[0]).toMatchObject({
-			id: 'gpt-5.4',
+			id: 'gpt-5.5',
 			upstreamModelId: 'gpt-5.5',
-			policyState: 'workaround_enabled'
+			recommended: true,
+			policyState: 'ready'
+		});
+		expect(body.data.find((model: { id: string }) => model.id === 'gpt-5.4')).toMatchObject({
+			upstreamModelId: 'gpt-5.5',
+			recommended: false,
+			policyState: 'workaround_enabled',
+			workaroundRequired: true
+		});
+	});
+
+	it('reports the disabled workaround policy while keeping direct gpt-5.5 as the recommended model', async () => {
+		const handle = createApiServer({
+			port: 0,
+			localApiKey,
+			internalControlSecret,
+			gpt54ToGpt55WorkaroundEnabled: false
+		});
+
+		const response = await handle.app.inject({
+			method: 'GET',
+			url: '/v1/models',
+			headers: {
+				authorization: `Bearer ${localApiKey}`
+			}
+		});
+
+		const body = response.json();
+
+		expect(response.statusCode).toBe(200);
+		expect(body.data.map((model: { id: string }) => model.id)).toEqual(['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4']);
+		expect(body.data[0]).toMatchObject({
+			id: 'gpt-5.5',
+			upstreamModelId: 'gpt-5.5',
+			recommended: true,
+			policyState: 'ready'
+		});
+		expect(body.data.find((model: { id: string }) => model.id === 'gpt-5.4')).toMatchObject({
+			upstreamModelId: 'gpt-5.4',
+			recommended: false,
+			policyState: 'workaround_disabled'
 		});
 	});
 });
@@ -557,6 +670,81 @@ describe('/v1/chat/completions', () => {
 		expect(response.statusCode).toBe(200);
 		expect(response.body).toContain('real upstream fixture');
 		expect(response.body).not.toContain('Hello from Codex');
+	});
+
+	it.each([
+		{
+			name: 'gpt-5.4 with workaround enabled',
+			model: 'gpt-5.4',
+			reasoning: { effort: 'medium', summary: 'auto' },
+			gpt54ToGpt55WorkaroundEnabled: true,
+			expectedUpstreamModel: 'gpt-5.5'
+		},
+		{
+			name: 'gpt-5.4 with workaround disabled',
+			model: 'gpt-5.4',
+			reasoning: { effort: 'high', summary: 'auto' },
+			gpt54ToGpt55WorkaroundEnabled: false,
+			expectedUpstreamModel: 'gpt-5.4'
+		},
+		{
+			name: 'gpt-5.4-mini with workaround enabled',
+			model: 'gpt-5.4-mini',
+			reasoning: { effort: 'low', summary: 'auto' },
+			gpt54ToGpt55WorkaroundEnabled: true,
+			expectedUpstreamModel: 'gpt-5.4-mini'
+		}
+	])('sends exact model routing and reasoning upstream for $name', async ({
+		model,
+		reasoning,
+		gpt54ToGpt55WorkaroundEnabled,
+		expectedUpstreamModel
+	}) => {
+		const upstreamBodies: Array<Record<string, unknown>> = [];
+		const handle = createReadyApiServer(
+			undefined,
+			async (_input, init) => {
+				upstreamBodies.push(JSON.parse(String(init?.body)));
+				return upstreamSseResponse('routed upstream fixture');
+			},
+			{ gpt54ToGpt55WorkaroundEnabled }
+		);
+		const authResponder = answerNextAuthRequest(handle);
+
+		const response = await handle.app.inject({
+			method: 'POST',
+			url: '/v1/chat/completions',
+			headers: {
+				authorization: `Bearer ${localApiKey}`
+			},
+			payload: {
+				model,
+				stream: true,
+				input: [{ role: 'user', content: 'synthetic routing verification request' }],
+				reasoning,
+				metadata: {
+					cursorConversationId: 'route-verification-conversation'
+				}
+			}
+		});
+		await authResponder;
+
+		expect(response.statusCode).toBe(200);
+		expect(upstreamBodies).toHaveLength(1);
+		expect(upstreamBodies[0]).toMatchObject({
+			model: expectedUpstreamModel,
+			reasoning,
+			stream: true,
+			store: false,
+			prompt_cache_key: 'route-verification-conversation'
+		});
+		expect(upstreamBodies[0]).not.toHaveProperty('metadata');
+		expect(handle.usageStore.list()[0]).toMatchObject({
+			status: 'completed',
+			cursorFacingModelId: model,
+			upstreamModelId: expectedUpstreamModel,
+			errorCategory: 'none'
+		});
 	});
 
 	it('flushes upstream SSE chunks before the upstream stream completes', async () => {
@@ -801,14 +989,16 @@ type FakeScenario = NonNullable<Parameters<typeof createApiServer>[0]['fakeCodex
 
 function createReadyApiServer(
 	fakeCodexScenario?: FakeScenario,
-	upstreamFetch?: typeof fetch
+	upstreamFetch?: typeof fetch,
+	overrides: Partial<Parameters<typeof createApiServer>[0]> = {}
 ): ReturnType<typeof createApiServer> {
 	const handle = createApiServer({
 		port: 0,
 		localApiKey,
 		internalControlSecret,
 		fakeCodexScenario,
-		upstreamFetch
+		upstreamFetch,
+		...overrides
 	});
 	handle.readinessState.markControlAuthenticated();
 	handle.readinessState.markAuthHandoffConnected();
@@ -817,8 +1007,21 @@ function createReadyApiServer(
 	return handle;
 }
 
+function upstreamSseResponse(text: string): Response {
+	return new Response(
+		[
+			`data: {"type":"response.output_text.delta","delta":${JSON.stringify(text)}}`,
+			'',
+			'data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}',
+			'',
+			''
+		].join('\n'),
+		{ status: 200 }
+	);
+}
+
 async function answerNextAuthRequest(handle: ReturnType<typeof createApiServer>): Promise<void> {
-	const polled = await handle.authQueue.poll(50);
+	const polled = await handle.authQueue.poll(AUTH_QUEUE_TEST_POLL_MS);
 	expect(polled).not.toBeNull();
 	handle.authQueue.respond(polled?.id ?? '', {
 		ok: true,
@@ -841,7 +1044,7 @@ async function answerAuthRequests(
 	const reasons: string[] = [];
 
 	for (let index = 0; index < count; index += 1) {
-		const polled = await handle.authQueue.poll(50);
+		const polled = await handle.authQueue.poll(AUTH_QUEUE_TEST_POLL_MS);
 		expect(polled).not.toBeNull();
 		reasons.push(polled?.reason ?? '');
 		handle.authQueue.respond(polled?.id ?? '', {

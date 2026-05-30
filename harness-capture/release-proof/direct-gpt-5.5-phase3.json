@@ -1,0 +1,45 @@
+{
+  "capture_id": "direct-gpt-5.5-phase3-release-proof",
+  "captured_at": "2026-05-30T00:00:00Z",
+  "analysis": {
+    "proof_type": "sanitized release-candidate direct-model proof fixture",
+    "notes": "Contains only the route/model/shape/reasoning fields needed by verify_capture.py; no real prompt, token, account, or provider payload is included.",
+    "cursor_facing_model_id": "gpt-5.5",
+    "request_shape": "responses"
+  },
+  "client": {
+    "address": "127.0.0.1",
+    "port": 5057
+  },
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "query": {},
+    "headers": {
+      "Host": "phase3-proof.example.com",
+      "User-Agent": "Cursor/1.0",
+      "Authorization": "Bearer...redacted",
+      "Content-Type": "application/json",
+      "X-Forwarded-Host": "phase3-proof.example.com",
+      "X-Forwarded-Proto": "https"
+    },
+    "body_text": "{\"stream\":true,\"model\":\"gpt-5.5\",\"input\":[{\"role\":\"user\",\"content\":\"synthetic direct model proof\"}],\"reasoning\":{\"effort\":\"low\",\"summary\":\"auto\"},\"metadata\":{\"cursorConversationId\":\"direct-gpt-5.5-phase3-release-proof\"}}",
+    "body_json": {
+      "stream": true,
+      "model": "gpt-5.5",
+      "input": [
+        {
+          "role": "user",
+          "content": "synthetic direct model proof"
+        }
+      ],
+      "reasoning": {
+        "effort": "low",
+        "summary": "auto"
+      },
+      "metadata": {
+        "cursorConversationId": "direct-gpt-5.5-phase3-release-proof"
+      }
+    }
+  }
+}

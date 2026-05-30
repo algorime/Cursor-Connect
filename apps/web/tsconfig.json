@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2022", "DOM"],
+		"strict": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"isolatedModules": true,
+		"skipLibCheck": true,
+		"types": ["node", "svelte"]
+	},
+	"include": ["src/**/*.ts", "tests/**/*.ts", "vite.config.ts", "src/**/*.svelte"]
+}

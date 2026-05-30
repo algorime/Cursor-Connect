@@ -47,16 +47,23 @@ describe('existing harness captures', () => {
 describe('model policy', () => {
 	it('keeps Cursor-Facing and Upstream Model IDs distinct for the explicit workaround', () => {
 		const models = listSupportedModels({ gpt54ToGpt55WorkaroundEnabled: true });
-		const recommended = models.find((model) => model.id === 'gpt-5.4');
+		const recommended = models.find((model) => model.id === 'gpt-5.5');
+		const fallback = models.find((model) => model.id === 'gpt-5.4');
 
 		expect(recommended).toMatchObject({
-			id: 'gpt-5.4',
+			id: 'gpt-5.5',
 			upstreamModelId: 'gpt-5.5',
 			recommended: true,
+			workaroundRequired: false,
+			policyState: 'ready'
+		});
+		expect(fallback).toMatchObject({
+			id: 'gpt-5.4',
+			upstreamModelId: 'gpt-5.5',
+			recommended: false,
 			workaroundRequired: true,
 			policyState: 'workaround_enabled'
 		});
-		expect(models.map((model) => model.id)).not.toContain('gpt-5.5');
 		expect(models.map((model) => model.id)).not.toContain('custom');
 	});
 
@@ -69,7 +76,7 @@ describe('model policy', () => {
 		expect(models.map((model) => model.id)).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5']);
 		expect(models.find((model) => model.id === 'gpt-5.5')).toMatchObject({
 			upstreamModelId: 'gpt-5.5',
-			recommended: false,
+			recommended: true,
 			workaroundRequired: false,
 			policyState: 'ready'
 		});
@@ -77,6 +84,74 @@ describe('model policy', () => {
 });
 
 describe('Cursor request adapter', () => {
+	it.each([
+		{
+			name: 'gpt-5.5 direct route',
+			body: {
+				model: 'gpt-5.5',
+				stream: true,
+				input: [{ role: 'user', content: 'direct reasoning route probe' }],
+				reasoning: { effort: 'high', summary: 'auto' }
+			},
+			settings: { gpt54ToGpt55WorkaroundEnabled: false },
+			expectedCursorModel: 'gpt-5.5',
+			expectedUpstreamModel: 'gpt-5.5',
+			expectedShape: 'responses'
+		},
+		{
+			name: 'gpt-5.4 with the workaround enabled',
+			body: {
+				model: 'gpt-5.4',
+				stream: true,
+				input: [{ role: 'user', content: 'reasoning route probe' }],
+				reasoning: { effort: 'medium', summary: 'auto' }
+			},
+			settings: { gpt54ToGpt55WorkaroundEnabled: true },
+			expectedCursorModel: 'gpt-5.4',
+			expectedUpstreamModel: 'gpt-5.5',
+			expectedShape: 'responses'
+		},
+		{
+			name: 'gpt-5.4 with the workaround disabled',
+			body: {
+				model: 'gpt-5.4',
+				stream: true,
+				input: [{ role: 'user', content: 'reasoning route probe' }],
+				reasoning: { effort: 'medium', summary: 'auto' }
+			},
+			settings: { gpt54ToGpt55WorkaroundEnabled: false },
+			expectedCursorModel: 'gpt-5.4',
+			expectedUpstreamModel: 'gpt-5.4',
+			expectedShape: 'responses'
+		},
+		{
+			name: 'gpt-5.4-mini with the workaround enabled',
+			body: {
+				model: 'gpt-5.4-mini',
+				stream: true,
+				messages: [{ role: 'user', content: 'mini reasoning route probe' }],
+				reasoning: { effort: 'low', summary: 'auto' }
+			},
+			settings: { gpt54ToGpt55WorkaroundEnabled: true },
+			expectedCursorModel: 'gpt-5.4-mini',
+			expectedUpstreamModel: 'gpt-5.4-mini',
+			expectedShape: 'chat_completions'
+		}
+	])('preserves reasoning while resolving $name', ({ body, settings, expectedCursorModel, expectedUpstreamModel, expectedShape }) => {
+		const adapted = adaptCursorRequestToCodexResponses(body, settings);
+
+		expect(adapted.ok).toBe(true);
+		if (!adapted.ok) {
+			return;
+		}
+
+		expect(adapted.requestShape).toBe(expectedShape);
+		expect(adapted.route.cursorFacingModelId).toBe(expectedCursorModel);
+		expect(adapted.route.upstreamModelId).toBe(expectedUpstreamModel);
+		expect(adapted.upstreamRequest.model).toBe(expectedUpstreamModel);
+		expect(adapted.upstreamRequest.reasoning).toEqual(body.reasoning);
+	});
+
 	it('adapts captured gpt-5.4 Responses-shaped requests to Codex Responses', () => {
 		const capture = readCapture(captures.gpt54);
 		const adapted = adaptCursorRequestToCodexResponses(capture.request.body_json, {
@@ -92,6 +167,7 @@ describe('Cursor request adapter', () => {
 		expect(adapted.route.cursorFacingModelId).toBe('gpt-5.4');
 		expect(adapted.route.upstreamModelId).toBe('gpt-5.5');
 		expect(adapted.upstreamRequest.model).toBe('gpt-5.5');
+		expect(adapted.upstreamRequest.reasoning).toEqual({ effort: 'medium', summary: 'auto' });
 		expect(adapted.upstreamRequest).toHaveProperty('input');
 		expect(adapted.upstreamRequest).not.toHaveProperty('messages');
 		expect(adapted.upstreamRequest).not.toHaveProperty('metadata');
@@ -195,6 +271,25 @@ describe('Cursor request adapter', () => {
 			return;
 		}
 		expect(adapted.errorCode).toBe('unsupported_model');
+	});
+
+	it('rejects unsupported model IDs before creating an upstream request', () => {
+		const adapted = adaptCursorRequestToCodexResponses(
+			{
+				model: 'custom',
+				stream: true,
+				input: [{ role: 'user', content: 'must not route upstream' }],
+				reasoning: { effort: 'medium', summary: 'auto' }
+			},
+			{ gpt54ToGpt55WorkaroundEnabled: true }
+		);
+
+		expect(adapted).toMatchObject({
+			ok: false,
+			statusCode: 400,
+			errorCategory: 'invalid_request',
+			errorCode: 'unsupported_model'
+		});
 	});
 });
 

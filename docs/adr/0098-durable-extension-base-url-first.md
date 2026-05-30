@@ -1,6 +1,6 @@
 # Durable Extension Base URL First
 
-Status: accepted
+Status: accepted, qualified by ADR-0116
 
 V1 should optimize setup around a durable Extension Base URL. A user-owned permanent public URL, including a Cloudflare named-tunnel hostname, is preferred when available because Cursor's OpenAI Base URL cannot be reliably updated by the extension after setup.
 

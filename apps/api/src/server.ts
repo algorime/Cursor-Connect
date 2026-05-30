@@ -28,6 +28,7 @@ export interface ApiServerConfig {
 	usageDbPath?: string;
 	authHandoffLeaseMs?: number;
 	now?: () => number;
+	runtimeId?: string;
 }
 
 export interface ApiServerHandle {
@@ -35,12 +36,15 @@ export interface ApiServerHandle {
 	readinessState: ReadinessState;
 	authQueue: PendingAuthQueue;
 	usageStore: UsageStore;
+	runtimeId?: string;
 }
 
 export function createApiServer(config: ApiServerConfig): ApiServerHandle {
+	const runtimeId = config.runtimeId;
 	const readinessState = new ReadinessState(Boolean(config.internalControlSecret), {
 		now: config.now,
-		authHandoffLeaseMs: config.authHandoffLeaseMs
+		authHandoffLeaseMs: config.authHandoffLeaseMs,
+		runtimeId
 	});
 	const authQueue = new PendingAuthQueue();
 	const usageStore: UsageStore = config.usageStore ?? new InMemoryUsageStore();
@@ -73,7 +77,8 @@ export function createApiServer(config: ApiServerConfig): ApiServerHandle {
 	app.register(modelsPlugin, {
 		localApiKey: config.localApiKey,
 		internalControlSecret: config.internalControlSecret,
-		modelRoutingSettings
+		modelRoutingSettings,
+		readinessState
 	});
 	app.register(chatCompletionsPlugin, {
 		localApiKey: config.localApiKey,
@@ -97,7 +102,7 @@ export function createApiServer(config: ApiServerConfig): ApiServerHandle {
 		await usageStore.close?.();
 	});
 
-	return { app, readinessState, authQueue, usageStore };
+	return { app, readinessState, authQueue, usageStore, runtimeId };
 }
 
 export async function startApiServer(config: ApiServerConfig): Promise<ApiServerHandle> {
@@ -141,7 +146,8 @@ export function readApiConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ApiS
 		modelRoutingSettings: readModelRoutingSettingsFromEnv(env),
 		fakeCodexScenario: readFakeScenario(env),
 		upstreamResponsesUrl: env.CODEX_AUTH_EXT_CODEX_RESPONSES_URL,
-		usageDbPath: env.CODEX_AUTH_EXT_USAGE_DB_PATH
+		usageDbPath: env.CODEX_AUTH_EXT_USAGE_DB_PATH,
+		runtimeId: env.CODEX_AUTH_EXT_RUNTIME_ID
 	};
 }
 

@@ -367,6 +367,34 @@ describe('RuntimeSupervisor', () => {
 		await supervisor.stop();
 	});
 
+	it('passes a stable runtime proof id to the API process', async () => {
+		const portStore = new MemoryPortStore();
+		const port = await getFreePort();
+		await portStore.write({ host: LOOPBACK_HOST, port });
+		const spawner = new InProcessApiSpawner();
+		spawners.push(spawner);
+
+		const supervisor = new RuntimeSupervisor({
+			extensionPath: '/tmp/codex-auth-ext',
+			devMode: true,
+			portManager: new PortManager({ store: portStore, checker: new FakePortChecker(new Set()) }),
+			credentials: new InMemoryCredentialStore(),
+			logger: new SafeRuntimeLogger({ write: () => {} }),
+			spawner,
+			runtimeId: 'runtime-from-extension',
+			getCodexAuthState: async () => 'authenticated',
+			requireReadyOnStart: true
+		});
+
+		const snapshot = await supervisor.start();
+		const response = await fetch(`${snapshot.localTargetUrl}/ready`, {
+			headers: { authorization: `Bearer ${await supervisor.getLocalApiKeyForTests()}` }
+		});
+
+		expect(snapshot.runtimeId).toBe('runtime-from-extension');
+		expect(await response.json()).toMatchObject({ runtimeId: 'runtime-from-extension' });
+	});
+
 	it('passes the persisted Harness Routing Workaround setting to the API process', async () => {
 		const portStore = new MemoryPortStore();
 		const port = await getFreePort();

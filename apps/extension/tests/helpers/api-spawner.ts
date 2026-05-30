@@ -26,7 +26,8 @@ export class InProcessApiSpawner implements ProcessSpawner {
 			localApiKey,
 			internalControlSecret,
 			gpt54ToGpt55WorkaroundEnabled: request.env.CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND === '1',
-			fakeCodexScenario: request.env.CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO as never
+			fakeCodexScenario: request.env.CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO as never,
+			runtimeId: request.env.CODEX_AUTH_EXT_RUNTIME_ID
 		})
 			.then((started) => {
 				handle = started;

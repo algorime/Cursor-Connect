@@ -16,6 +16,7 @@ out/
 
 # Extension-packaged runtime artifacts are generated during build
 apps/extension/api/
+apps/extension/dashboard/
 
 # Tooling caches
 .vite/

@@ -44,6 +44,8 @@ const plugin: FastifyPluginCallback<ChatCompletionsRouteOptions> = (app, opts, d
 			return reply.status(authFailure.statusCode).send(authFailure.body);
 		}
 
+		opts.readinessState.recordCursorFacingRequest(request.method, '/v1/chat/completions');
+
 		if (!opts.readinessState.isReady()) {
 			return reply.status(503).send(openAiError('service_not_ready', 'service_not_ready'));
 		}

@@ -2,6 +2,7 @@ import {
 	INTERNAL_CONTROL_HEADER,
 	type AuthHandoffResponse,
 	type CodexAuthState,
+	type InternalStatusResponse,
 	type PendingAuthRequest,
 	type ReadyResponse,
 	type RuntimeSnapshot
@@ -37,6 +38,7 @@ export interface RuntimeSupervisorOptions {
 	requireReadyOnStart?: boolean;
 	fakeCodexScenario?: string;
 	usageDbPath?: string;
+	runtimeId?: string;
 }
 
 export interface RuntimeStatusView {
@@ -62,6 +64,7 @@ export class RuntimeSupervisor {
 	private readonly requireReadyOnStart: boolean;
 	private readonly fakeCodexScenario?: string;
 	private readonly usageDbPath?: string;
+	private readonly runtimeId: string;
 	private readonly state = new RuntimeStateModel();
 	private authPollAbort: AbortController | null = null;
 
@@ -96,6 +99,7 @@ export class RuntimeSupervisor {
 		this.requireReadyOnStart = options.requireReadyOnStart ?? false;
 		this.fakeCodexScenario = options.fakeCodexScenario;
 		this.usageDbPath = options.usageDbPath;
+		this.runtimeId = options.runtimeId ?? crypto.randomUUID();
 	}
 
 	getStatus(): RuntimeStatusView {
@@ -174,12 +178,13 @@ export class RuntimeSupervisor {
 				return this.fail('health_failed', 'health', 'api health check failed or timed out', {
 					port: portState.port,
 					localTargetUrl
-				});
+					});
 			}
 
 			this.state.setPhase('running_health_only', {
 				port: portState.port,
-				localTargetUrl
+				localTargetUrl,
+				runtimeId: this.runtimeId
 			});
 
 			const controlOk = await this.verifyInternalControl(localTargetUrl, internalControlSecret);
@@ -216,7 +221,7 @@ export class RuntimeSupervisor {
 			return this.state.setPhase('ready', {
 				port: portState.port,
 				localTargetUrl
-			});
+					});
 		} catch (error) {
 			await this.stopProcess();
 			const message = error instanceof Error ? error.message : 'runtime launch failed';
@@ -224,6 +229,36 @@ export class RuntimeSupervisor {
 			return this.fail('launch_failed', 'launch', message);
 		} finally {
 			this.starting = false;
+		}
+	}
+
+	async getLocalApiKeyForTests(): Promise<string> {
+		return this.credentials.getLocalApiKey();
+	}
+
+	getRuntimeId(): string {
+		return this.runtimeId;
+	}
+
+	async getInternalStatus(): Promise<InternalStatusResponse | null> {
+		const snapshot = this.state.getSnapshot();
+		if (!snapshot.localTargetUrl) {
+			return null;
+		}
+
+		const internalControlSecret = await this.credentials.getInternalControlSecret();
+		try {
+			const response = await this.fetchImpl(`${snapshot.localTargetUrl}/internal/status`, {
+				headers: {
+					[INTERNAL_CONTROL_HEADER]: internalControlSecret
+				}
+			});
+			if (!response.ok) {
+				return null;
+			}
+			return (await response.json()) as InternalStatusResponse;
+		} catch {
+			return null;
 		}
 	}
 
@@ -258,7 +293,8 @@ export class RuntimeSupervisor {
 				CODEX_AUTH_EXT_INTERNAL_CONTROL_SECRET: internalControlSecret,
 				CODEX_AUTH_EXT_GPT54_TO_GPT55_WORKAROUND: this.modelRoutingWorkaroundEnabled() ? '1' : '0',
 				CODEX_AUTH_EXT_FAKE_CODEX_SCENARIO: this.fakeCodexScenario ?? '',
-				CODEX_AUTH_EXT_USAGE_DB_PATH: this.usageDbPath ?? ''
+				CODEX_AUTH_EXT_USAGE_DB_PATH: this.usageDbPath ?? '',
+				CODEX_AUTH_EXT_RUNTIME_ID: this.runtimeId
 			}
 		});
 	}

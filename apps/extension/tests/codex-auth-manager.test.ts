@@ -289,8 +289,13 @@ describe('ModelRoutingSettingsStore', () => {
 		const store = new ModelRoutingSettingsStore(new InMemoryExtensionStateStore());
 
 		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(false);
-		await store.setGpt54ToGpt55WorkaroundEnabled(true);
+		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('decide_later');
+		await store.setGpt54ToGpt55WorkaroundDecision('enabled');
 		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(true);
+		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('enabled');
+		await store.setGpt54ToGpt55WorkaroundDecision('skipped');
+		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(false);
+		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('skipped');
 	});
 });
 

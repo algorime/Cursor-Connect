@@ -26,8 +26,16 @@
 				"title": "Codex Auth: Show Runtime Status"
 			},
 			{
+				"command": "codexAuthExt.openDashboard",
+				"title": "Codex Auth: Open Dashboard"
+			},
+			{
 				"command": "codexAuthExt.copyCursorSetup",
 				"title": "Codex Auth: Copy Cursor Setup"
+			},
+			{
+				"command": "codexAuthExt.doctorCheckSetup",
+				"title": "Codex Auth: Doctor Check Setup"
 			},
 			{
 				"command": "codexAuthExt.restartRuntime",
@@ -48,11 +56,31 @@
 			{
 				"command": "codexAuthExt.enableGpt55Workaround",
 				"title": "Codex Auth: Enable GPT-5.5 Workaround"
+			},
+			{
+				"command": "codexAuthExt.copyExtensionBaseUrl",
+				"title": "Codex Auth: Copy Extension Base URL"
+			},
+			{
+				"command": "codexAuthExt.copyLocalApiKey",
+				"title": "Codex Auth: Copy Local API Key"
+			},
+			{
+				"command": "codexAuthExt.restartTunnel",
+				"title": "Codex Auth: Restart Quick Tunnel"
+			},
+			{
+				"command": "codexAuthExt.skipGpt55Workaround",
+				"title": "Codex Auth: Skip GPT-5.5 Workaround"
+			},
+			{
+				"command": "codexAuthExt.decideLaterGpt55Workaround",
+				"title": "Codex Auth: Decide on GPT-5.5 Workaround Later"
 			}
 		]
 	},
 	"scripts": {
-		"build": "tsup && node scripts/stage-api-bundle.mjs",
+		"build": "tsup && node scripts/stage-api-bundle.mjs && node scripts/stage-dashboard-assets.mjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"lint": "tsc -p tsconfig.json --noEmit",
 		"test": "vitest run"

@@ -8,10 +8,10 @@
 		"pnpm": ">=10.0.0"
 	},
 	"scripts": {
-		"build": "pnpm --filter @codex-auth-ext/shared build && pnpm --filter @codex-auth-ext/api build && pnpm --filter codex-auth-ext build",
+		"build": "pnpm --filter @codex-auth-ext/shared build && pnpm --filter @codex-auth-ext/api build && pnpm --filter @codex-auth-ext/web build && pnpm --filter codex-auth-ext build",
 		"test": "pnpm run build && pnpm -r run test",
 		"typecheck": "pnpm --filter @codex-auth-ext/shared build && pnpm --filter @codex-auth-ext/api build && pnpm -r run typecheck",
-		"lint": "pnpm -r run lint",
+		"lint": "pnpm --filter @codex-auth-ext/shared build && pnpm -r run lint",
 		"smoke": "pnpm run build && node --test scripts/smoke/runtime-spawn.test.mjs"
 	}
 }

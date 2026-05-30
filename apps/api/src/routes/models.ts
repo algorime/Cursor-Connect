@@ -6,11 +6,13 @@ import {
 	rejectIfInternalSecretUsedOnCursorRoute
 } from '../auth/api-auth-boundary.js';
 import { listSupportedModels, type ModelRoutingSettings } from '../models/codex-model-policy.js';
+import type { ReadinessState } from '../state/readiness-state.js';
 
 export interface ModelsRouteOptions {
 	localApiKey: string;
 	internalControlSecret: string;
 	modelRoutingSettings: ModelRoutingSettings;
+	readinessState: ReadinessState;
 	onAuthFailure?: (event: SafeLogEvent) => void;
 }
 
@@ -34,6 +36,8 @@ const plugin: FastifyPluginCallback<ModelsRouteOptions> = (app, opts, done) => {
 		if (!auth.ok) {
 			return reply.status(auth.statusCode).send(auth.body);
 		}
+
+		opts.readinessState.recordCursorFacingRequest(request.method, '/v1/models');
 
 		const body: ModelsResponse = {
 			object: 'list',

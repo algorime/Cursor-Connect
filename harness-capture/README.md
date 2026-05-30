@@ -55,8 +55,8 @@ Harness probe. Reply with exactly: PROBE_OK. Do not inspect files or run tools u
 
 Start with:
 
-- `gpt-5.4`
-- `gpt-5.5`
+- `gpt-5.5` (the normal direct Phase 3 path)
+- `gpt-5.4` (advanced fallback/workaround path)
 - one Claude Opus built-in model ID from Cursor's model picker
 - one Claude Sonnet built-in model ID from Cursor's model picker
 - one custom model ID returned by `/v1/models`, such as `codex-gpt-5.5-capture`
@@ -68,6 +68,56 @@ For each capture, record:
 - Which model ID Cursor sent in the body
 - Whether the request was Chat Completions-like or Responses-like
 - Differences in system/developer messages, tools, reasoning fields, and metadata
+
+## Verify A Current Cursor Capture
+
+Use this when checking that Cursor still emits the model ID and reasoning fields the extension depends on. Start the capture server, point Cursor's OpenAI-compatible Base URL at the public route ending in `/v1`, then send the synthetic probe above.
+
+For a normal direct `gpt-5.5` Cursor capture:
+
+```bash
+python3 harness-capture/verify_capture.py harness-capture/captures/<capture>.json \
+  --expect-model gpt-5.5 \
+  --expect-shape responses \
+  --expect-path-prefix /v1 \
+  --expect-host <public-route-host> \
+  --expect-reasoning-effort medium \
+  --expect-reasoning-summary auto
+```
+
+The Phase 3 release keeps a sanitized direct-model proof fixture at
+`harness-capture/release-proof/direct-gpt-5.5-phase3.json`. Verify it with:
+
+```bash
+python3 harness-capture/verify_capture.py harness-capture/release-proof/direct-gpt-5.5-phase3.json \
+  --expect-model gpt-5.5 \
+  --expect-shape responses \
+  --expect-path-prefix /v1 \
+  --expect-host phase3-proof.example.com \
+  --expect-reasoning-effort low \
+  --expect-reasoning-summary auto
+```
+
+For `gpt-5.4-mini`:
+
+```bash
+python3 harness-capture/verify_capture.py harness-capture/captures/<capture>.json \
+  --expect-model gpt-5.4-mini \
+  --expect-shape responses \
+  --expect-path-prefix /v1 \
+  --expect-host <public-route-host> \
+  --expect-reasoning-effort medium \
+  --expect-reasoning-summary auto
+```
+
+This validates what Cursor sent into the extension-facing route. To verify what the extension sends upstream after applying the workaround, run the packaged smoke test:
+
+```bash
+pnpm run build
+pnpm run smoke
+```
+
+The smoke test captures the API bundle's outgoing Codex Responses POST and checks both `gpt-5.4 -> gpt-5.5` enabled and `gpt-5.4 -> gpt-5.4` disabled.
 
 ## Endpoints
 

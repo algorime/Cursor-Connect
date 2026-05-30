@@ -86,14 +86,11 @@ describe('buildExtensionSetupState', () => {
 			notificationPreference: 'balanced'
 		});
 
-		expect(undecided.items.find((item) => item.id === 'harness-workaround')).toMatchObject({
-			label: 'Model compatibility fallback',
-			status: 'warning'
-		});
+		expect(undecided.items.find((item) => item.id === 'harness-workaround')).toBeUndefined();
 		expect(undecided.readiness).toMatchObject({
 			state: 'ready',
 			blockers: [],
-			warnings: expect.arrayContaining(['Model compatibility fallback', 'Usage storage', 'Temporary Extension Base URL'])
+			warnings: expect.arrayContaining(['Usage storage', 'Temporary Extension Base URL'])
 		});
 		expect(staleTraffic.items.find((item) => item.id === 'cursor-setup')).toMatchObject({ status: 'active' });
 		expect(staleTraffic.readiness).toMatchObject({ state: 'setup' });

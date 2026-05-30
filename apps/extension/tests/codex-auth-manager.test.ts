@@ -285,14 +285,14 @@ describe('CodexAuthManager', () => {
 });
 
 describe('ModelRoutingSettingsStore', () => {
-	it('persists the user-visible Harness Routing Workaround opt-in in extension state', async () => {
+	it('keeps the dormant model workaround disabled even if legacy state opts in', async () => {
 		const store = new ModelRoutingSettingsStore(new InMemoryExtensionStateStore());
 
 		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(false);
-		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('decide_later');
+		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('skipped');
 		await store.setGpt54ToGpt55WorkaroundDecision('enabled');
-		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(true);
-		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('enabled');
+		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(false);
+		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('skipped');
 		await store.setGpt54ToGpt55WorkaroundDecision('skipped');
 		expect(store.getGpt54ToGpt55WorkaroundEnabled()).toBe(false);
 		expect(store.getGpt54ToGpt55WorkaroundDecision()).toBe('skipped');

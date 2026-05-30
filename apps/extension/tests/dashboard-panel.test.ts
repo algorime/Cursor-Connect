@@ -108,17 +108,17 @@ describe('dashboard setup mutation guard', () => {
 			getSetupState: vi.fn(async () => setupState)
 		};
 		const secondCoordinator = {
-			setModelWorkaroundDecision: vi.fn(async () => setupState)
+			startQuickTunnel: vi.fn(async () => setupState.tunnel)
 		};
 		const first = createBridgeHarness(firstCoordinator, guard);
 		const second = createBridgeHarness(secondCoordinator, guard);
 
 		first.send({ type: 'dashboard.verifyPublicUrl', requestId: 'verify-1', url: 'https://codex.example.com' });
 		await flushPromises();
-		second.send({ type: 'dashboard.setModelWorkaroundDecision', requestId: 'model-2', decision: 'enabled' });
+		second.send({ type: 'dashboard.startQuickTunnel', requestId: 'model-2' });
 		await flushPromises();
 
-		expect(secondCoordinator.setModelWorkaroundDecision).not.toHaveBeenCalled();
+		expect(secondCoordinator.startQuickTunnel).not.toHaveBeenCalled();
 		expect(second.posted).toContainEqual({
 			type: 'extension.error',
 			requestId: 'model-2',

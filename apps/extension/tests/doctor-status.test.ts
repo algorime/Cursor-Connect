@@ -16,7 +16,6 @@ describe('doctor and status surfaces', () => {
 			statusPreference: 'visible',
 			notificationPreference: 'verbose',
 			cursorSetup: { manualConfirmed: true, confirmedAt: 1 },
-			modelWorkaround: 'decide_later',
 			localApiKeyPresent: true,
 			cloudflaredProvision: { status: 'integrity_failed', message: 'cloudflared checksum mismatch' },
 			usageStorageState: 'ready',
@@ -31,7 +30,7 @@ describe('doctor and status surfaces', () => {
 		expect(report.checks.map((check) => check.id)).toContain('public-url-ready');
 		expect(report.checks.map((check) => check.id)).toContain('local-api-key');
 		expect(report.checks.map((check) => check.id)).toContain('cursor-setup-confirmation');
-		expect(report.checks.map((check) => check.id)).toContain('model-compatibility-fallback');
+		expect(report.checks.map((check) => check.id)).not.toContain('model-compatibility-fallback');
 		expect(report.checks.map((check) => check.id)).toContain('notification-preference');
 		expect(report.checks.find((check) => check.id === 'cloudflared-provisioning')).toMatchObject({ status: 'warn' });
 		expect(report.checks.find((check) => check.id === 'openai-key-repair')).toMatchObject({ status: 'pass' });
@@ -47,7 +46,6 @@ describe('doctor and status surfaces', () => {
 			codexAuthState: 'authenticated',
 			apiTraffic: createEmptyApiTrafficStatus(),
 			cursorSetup: { manualConfirmed: true, confirmedAt: 1, staleReason: 'Route changed; confirm Cursor setup again.' },
-			modelWorkaround: 'decide_later',
 			tunnel: createQuickTunnelStatus('not_started'),
 			openAiKeyRepair: { decision: 'decide_later', capability: 'available' },
 			statusPreference: 'visible',
@@ -67,10 +65,7 @@ describe('doctor and status surfaces', () => {
 			status: 'warn',
 			guidance: expect.stringMatching(/optional/i)
 		});
-		expect(report.checks.find((check) => check.id === 'model-compatibility-fallback')).toMatchObject({
-			status: 'pass',
-			guidance: expect.stringMatching(/does not block Ready/i)
-		});
+		expect(report.checks.find((check) => check.id === 'model-compatibility-fallback')).toBeUndefined();
 	});
 
 	it('derives privacy-first status bar states', () => {

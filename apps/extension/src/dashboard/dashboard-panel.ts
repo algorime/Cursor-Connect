@@ -198,17 +198,6 @@ async function handleDashboardMessage(
 			return;
 		}
 
-		if (message.type === 'dashboard.setModelWorkaroundDecision') {
-			const state = await coordinator.setModelWorkaroundDecision(message.decision);
-			await afterSetupStateChange?.();
-			await webview.postMessage({
-				requestId,
-				type: 'extension.setupState',
-				state
-			});
-			return;
-		}
-
 		if (message.type === 'dashboard.openCursorSettings') {
 			await vscode.commands.executeCommand('workbench.action.openSettings', message.query);
 			await webview.postMessage({

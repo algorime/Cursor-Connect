@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ModelWorkaroundDecision, NotificationPreference } from '@codex-auth-ext/shared';
+	import type { NotificationPreference } from '@codex-auth-ext/shared';
 	import DashboardShell from './components/DashboardShell.svelte';
 	import DiagnosticsPage from './pages/DiagnosticsPage.svelte';
 	import HomePage from './pages/HomePage.svelte';
@@ -38,7 +38,6 @@
 	export let onSetOpenAiKeyRepairDecision: (decision: 'enabled' | 'skipped' | 'decide_later' | 'disabled') => void = () => undefined;
 	export let onSetStatusBarPreference: (preference: 'visible' | 'hidden') => void = () => undefined;
 	export let onSetNotificationPreference: (preference: NotificationPreference) => void = () => undefined;
-	export let onSetModelWorkaroundDecision: (decision: ModelWorkaroundDecision) => void = () => undefined;
 	export let onOpenCursorSettings: () => void = () => undefined;
 	export let onStartQuickTunnel: () => void = () => undefined;
 	export let onStopQuickTunnel: () => void = () => undefined;
@@ -79,9 +78,6 @@
 				break;
 			case 'open_setup':
 				selectPage('setup');
-				break;
-			case 'decide_model_workaround':
-				selectPage('preferences');
 				break;
 			case 'verify_public_url':
 				onVerifyPublicUrl(publicUrl);
@@ -207,7 +203,6 @@
 				{interactionState}
 				onStatusBarPreference={onSetStatusBarPreference}
 				onNotificationPreference={onSetNotificationPreference}
-				onModelDecision={onSetModelWorkaroundDecision}
 				onOpenAiRepair={(decision) => onSetOpenAiKeyRepairDecision(decision)}
 			/>
 		{/if}

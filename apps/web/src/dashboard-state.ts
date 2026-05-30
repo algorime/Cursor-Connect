@@ -11,7 +11,6 @@ export type DashboardActionId =
 	| 'restart_quick_tunnel'
 	| 'open_setup'
 	| 'verify_public_url'
-	| 'decide_model_workaround'
 	| 'copy_full_setup'
 	| 'copy_base_url'
 	| 'open_cursor_settings'
@@ -105,10 +104,8 @@ export interface DashboardSetupViewModel {
 	statusMessages: string[];
 	canCopyFinalSetup: boolean;
 	canCopyBaseUrl: boolean;
-	modelWorkaroundDecision: SetupState['modelWorkaroundDecision'];
 	openAiKeyRepairDecision: VisibleOpenAiKeyRepairDecision;
 	openAiKeyRepair: OpenAiKeyRepairViewModel;
-	pendingModelWorkaroundDecision: SetupState['modelWorkaroundDecision'] | null;
 	pendingOpenAiKeyRepairDecision: VisibleOpenAiKeyRepairDecision;
 	modelDecisionRequired: boolean;
 	durableExamples: Array<{ label: string; summary: string }>;
@@ -130,12 +127,10 @@ export interface DiagnosticsViewModel {
 export interface PreferencesViewModel {
 	statusBarPreference: SetupState['statusBarPreference'];
 	notificationPreference: SetupState['notificationPreference'];
-	modelWorkaroundDecision: 'enabled' | 'skipped' | 'decide_later';
 	openAiKeyRepairDecision: VisibleOpenAiKeyRepairDecision;
 	openAiKeyRepair: OpenAiKeyRepairViewModel;
 	pendingStatusBarPreference: SetupState['statusBarPreference'] | null;
 	pendingNotificationPreference: SetupState['notificationPreference'] | null;
-	pendingModelWorkaroundDecision: SetupState['modelWorkaroundDecision'] | null;
 	pendingOpenAiKeyRepairDecision: VisibleOpenAiKeyRepairDecision;
 }
 
@@ -175,20 +170,19 @@ export function buildDashboardViewModel(
 		preferences: {
 			statusBarPreference: state.statusBarPreference,
 			notificationPreference: state.notificationPreference,
-			modelWorkaroundDecision: state.modelWorkaroundDecision,
 			openAiKeyRepairDecision: visibleOpenAiKeyRepairDecision(state.openAiKeyRepair?.decision),
 			openAiKeyRepair: buildOpenAiKeyRepairViewModel(state),
 			pendingStatusBarPreference: null,
 			pendingNotificationPreference: null,
-			pendingModelWorkaroundDecision: null,
 			pendingOpenAiKeyRepairDecision: null
 		}
 	};
 }
 
 export function buildDashboardHomeViewModel(state: SetupState): DashboardHomeViewModel {
-	const blockingItem = state.items.find((item) => item.status === 'blocked')
-		?? state.items.find((item) => item.status === 'active')
+	const visibleItems = visibleSetupItems(state.items);
+	const blockingItem = visibleItems.find((item) => item.status === 'blocked')
+		?? visibleItems.find((item) => item.status === 'active')
 		?? null;
 	const mode = state.readiness.state === 'ready' ? 'ready' : state.readiness.state === 'blocked' ? 'blocked' : 'setup';
 
@@ -197,7 +191,7 @@ export function buildDashboardHomeViewModel(state: SetupState): DashboardHomeVie
 		headline: mode === 'ready' ? 'Codex is ready' : mode === 'blocked' ? 'Repair Codex setup' : 'Finish Codex setup',
 		blockingItem,
 		badges: buildBadges(state),
-		items: state.items,
+		items: visibleItems,
 		nextAction: buildNextAction(state, blockingItem),
 		readinessCards: buildReadinessCards(state),
 		warningChips: buildWarningChips(state),
@@ -250,6 +244,11 @@ function buildNav(activePage: DashboardViewModel['activePage']): DashboardNavIte
 		{ id: 'accounts', label: 'Accounts', active: false, disabled: true, badge: 'Later' },
 		{ id: 'logs-support', label: 'Logs & Support', active: false, disabled: true, badge: 'Later' }
 	];
+}
+
+
+function visibleSetupItems(items: SetupChecklistItem[]): SetupChecklistItem[] {
+	return items.filter((item) => item.id !== 'harness-workaround');
 }
 
 function buildNextAction(state: SetupState, blockingItem: SetupChecklistItem | null): DashboardActionViewModel {
@@ -344,7 +343,7 @@ function buildBadges(state: SetupState): string[] {
 
 function buildReadinessCards(state: SetupState): ReadinessCardViewModel[] {
 	const ids = new Set(['runtime', 'codex-auth', 'public-url', 'cursor-setup']);
-	return state.items
+	return visibleSetupItems(state.items)
 		.filter((item) => ids.has(item.id))
 		.map((item) => ({
 			id: item.id,
@@ -394,10 +393,8 @@ function buildSetupViewModel(state: SetupState): DashboardSetupViewModel {
 		].filter((message): message is string => Boolean(message)),
 		canCopyFinalSetup: state.publicUrl.state === 'authenticated_ready',
 		canCopyBaseUrl: state.publicUrl.state === 'authenticated_ready',
-		modelWorkaroundDecision: state.modelWorkaroundDecision,
 		openAiKeyRepairDecision: visibleOpenAiKeyRepairDecision(state.openAiKeyRepair?.decision),
 		openAiKeyRepair: buildOpenAiKeyRepairViewModel(state),
-		pendingModelWorkaroundDecision: null,
 		pendingOpenAiKeyRepairDecision: null,
 		modelDecisionRequired: false,
 		commandCenter: buildCommandCenter(state),

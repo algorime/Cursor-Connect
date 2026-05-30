@@ -40,7 +40,6 @@
 		stop_quick_tunnel: view('stop_quick_tunnel'),
 		restart_quick_tunnel: view('restart_quick_tunnel'),
 		verify_public_url: view('verify_public_url'),
-		set_model_workaround_decision: view('set_model_workaround_decision'),
 		copy_full_setup: view('copy_full_setup'),
 		copy_base_url: view('copy_base_url'),
 		copy_api_key: view('copy_api_key'),

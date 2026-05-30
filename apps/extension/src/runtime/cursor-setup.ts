@@ -43,7 +43,7 @@ export function buildCursorSetupDetails(options: {
 				: 'No verified public Extension Base URL yet. Do not paste the local target as Cursor Base URL.',
 		models: [...CURSOR_SETUP_MODELS],
 		publicUrlRequired: !extensionBaseUrl,
-		instructions: 'Recommended setup: select direct Cursor-facing gpt-5.5. The dormant gpt-5.4 to gpt-5.5 Harness Routing Workaround is an advanced fallback only; use gpt-5.4-mini as a secondary model and avoid arbitrary custom model IDs unless a Harness Capture verifies them.',
+		instructions: 'Recommended setup: select direct Cursor-facing gpt-5.5. Use gpt-5.4-mini as a secondary model and avoid arbitrary custom model IDs unless a Harness Capture verifies them.',
 		manualConfirmationRequired: options.manualConfirmationRequired ?? false,
 		rotationWarning: options.apiKeyRotated ? 'Local API key was rotated; old keys stop working after the API restart and Cursor settings must be updated.' : null
 	};

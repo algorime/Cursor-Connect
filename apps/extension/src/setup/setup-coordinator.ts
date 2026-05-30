@@ -37,7 +37,6 @@ export interface SetupCoordinatorOptions {
 	getInternalStatus: () => Promise<InternalStatusResponse | null>;
 	getModelWorkaroundEnabled: () => boolean;
 	getModelWorkaroundDecision?: () => ModelWorkaroundDecision;
-	setModelWorkaroundDecision?: (decision: ModelWorkaroundDecision) => Promise<void>;
 	restartRuntime?: () => Promise<RuntimeSnapshot>;
 	getTunnelStatus?: () => QuickTunnelStatus;
 	quickTunnel?: QuickTunnelManager;
@@ -164,7 +163,6 @@ export class SetupCoordinator {
 			statusPreference: this.getStatusBarPreference(),
 			notificationPreference: this.getNotificationPreference(),
 			cursorSetup: this.getCursorSetupState(),
-			modelWorkaround: this.getModelWorkaroundDecision(),
 			localApiKeyPresent: localApiKey.length > 0,
 			cloudflaredProvision: this.options.getCloudflaredProvisionResult?.() ?? null,
 			usageStorageState: internal?.usageStorageState ?? 'ready',
@@ -191,18 +189,6 @@ export class SetupCoordinator {
 
 	async setNotificationPreference(preference: NotificationPreference): Promise<SetupState> {
 		await this.options.state.update(NOTIFICATION_PREFERENCE_KEY, preference);
-		return this.getSetupState();
-	}
-
-	async setModelWorkaroundDecision(decision: ModelWorkaroundDecision): Promise<SetupState> {
-		if (!this.options.setModelWorkaroundDecision) {
-			throw new Error('Harness Routing Workaround decision surface is not available.');
-		}
-		await this.options.setModelWorkaroundDecision(decision);
-		if (this.options.restartRuntime) {
-			await this.options.restartRuntime();
-		}
-		await this.markCursorSetupStale('Harness Routing Workaround decision changed; copy the final Cursor setup guidance again.');
 		return this.getSetupState();
 	}
 
@@ -320,15 +306,9 @@ export class SetupCoordinator {
 	}
 
 	private buildModelGuidance(): string {
-		const decision = this.getModelWorkaroundDecision();
 		const lines = [
 			'Recommended Cursor-facing model: gpt-5.5.',
 			'Direct model path: use gpt-5.5 directly so Cursor-selected reasoning effort and summary settings pass through unchanged.',
-			decision === 'enabled'
-				? 'Advanced Harness Routing Workaround: enabled; the extension routes gpt-5.4 upstream to gpt-5.5 as an explicit fallback.'
-				: decision === 'skipped'
-					? 'Advanced Harness Routing Workaround: skipped; direct Cursor model routing remains the normal path.'
-					: 'Advanced Harness Routing Workaround: dormant; no decision is required for Ready while direct gpt-5.5 routing is verified.',
 			'Secondary Cursor-facing model: gpt-5.4-mini.',
 			'Do not use custom model IDs as the normal setup path; they can lose Cursor OpenAI-family harness behavior.',
 			`Model IDs to add/select: ${CURSOR_SETUP_MODELS.join(', ')}`

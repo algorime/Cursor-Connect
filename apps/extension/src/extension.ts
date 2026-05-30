@@ -2,8 +2,6 @@ import * as path from 'node:path';
 import { spawn } from 'node:child_process';
 
 import * as vscode from 'vscode';
-import type { ModelWorkaroundDecision } from '@codex-auth-ext/shared';
-
 import {
 	CodexAuthError,
 	CodexAuthManager,
@@ -125,7 +123,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		getInternalStatus: async () => supervisor?.getInternalStatus() ?? null,
 		getModelWorkaroundEnabled: () => routingSettings.getGpt54ToGpt55WorkaroundEnabled(),
 		getModelWorkaroundDecision: () => routingSettings.getGpt54ToGpt55WorkaroundDecision(),
-		setModelWorkaroundDecision: (decision) => routingSettings.setGpt54ToGpt55WorkaroundDecision(decision),
 		environmentLabel: detectExtensionHostEnvironment(vscode.env.remoteName),
 		getCloudflaredProvisionResult: () => lastCloudflaredProvisionResult,
 		restartRuntime: async () => {
@@ -309,10 +306,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				`Codex auth removed${snapshot ? `; runtime ${snapshot.phase}` : ''}`
 			);
 		}),
-		vscode.commands.registerCommand('codexAuthExt.enableGpt55Workaround', () => setModelWorkaroundDecisionFromCommand(setupCoordinator, updateStatusBar, dashboardSetupMutationGuard, 'enabled')),
-		vscode.commands.registerCommand('codexAuthExt.skipGpt55Workaround', () => setModelWorkaroundDecisionFromCommand(setupCoordinator, updateStatusBar, dashboardSetupMutationGuard, 'skipped')),
-		vscode.commands.registerCommand('codexAuthExt.decideLaterGpt55Workaround', () => setModelWorkaroundDecisionFromCommand(setupCoordinator, updateStatusBar, dashboardSetupMutationGuard, 'decide_later')),
-
 		{
 			dispose: () => {
 				void quickTunnel.stop();
@@ -347,26 +340,6 @@ async function broadcastSetupState(webviews: Set<vscode.Webview>, setupCoordinat
 		type: 'extension.setupState',
 		state
 	})));
-}
-
-async function setModelWorkaroundDecisionFromCommand(
-	setupCoordinator: SetupCoordinator,
-	updateStatusBar: () => Promise<void>,
-	setupMutationGuard: SetupMutationGuard,
-	decision: ModelWorkaroundDecision
-): Promise<void> {
-	try {
-		const state = await runGuardedSetupMutation(
-			setupMutationGuard,
-			`command.modelWorkaround.${decision}`,
-			() => setupCoordinator.setModelWorkaroundDecision(decision)
-		);
-		await updateStatusBar();
-		const status = state.items.find((item) => item.id === 'harness-workaround')?.guidance ?? `Harness Routing Workaround ${decision}.`;
-		void vscode.window.showInformationMessage(status);
-	} catch (error) {
-		void vscode.window.showErrorMessage(readErrorMessage(error));
-	}
 }
 
 function spawnTunnelProcess(binaryPath: string | null, args: string[]): TunnelProcess {

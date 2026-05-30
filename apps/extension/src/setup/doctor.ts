@@ -5,7 +5,6 @@ import {
 	type CodexAuthState,
 	type DoctorCheck,
 	type DoctorReport,
-	type ModelWorkaroundDecision,
 	type PublicUrlState,
 	type QuickTunnelStatus,
 	type NotificationPreference,
@@ -26,7 +25,6 @@ export interface DoctorReportInput {
 	statusPreference: StatusBarPreference;
 	notificationPreference: NotificationPreference;
 	cursorSetup?: CursorSetupReadiness;
-	modelWorkaround?: ModelWorkaroundDecision;
 	localApiKeyPresent?: boolean;
 	cloudflaredProvision: ProvisionResult | null;
 	usageStorageState: 'ready' | 'degraded';
@@ -54,7 +52,6 @@ export function buildDoctorReport(input: DoctorReportInput): DoctorReport {
 		check('local-api-key', 'Generated local API key', input.localApiKeyPresent === false ? 'fail' : 'pass', input.localApiKeyPresent === false ? 'Generated local API key is missing; restart or repair the extension runtime.' : 'Generated local API key is present and redacted.'),
 		check('cursor-traffic', 'Cursor traffic', input.apiTraffic.lastCursorFacingRequest ? 'pass' : 'warn', input.apiTraffic.lastCursorFacingRequest ? 'Last authenticated Cursor-facing request was detected.' : 'No authenticated Cursor traffic has been detected yet.', input.apiTraffic.lastCursorFacingRequest ? { ...input.apiTraffic.lastCursorFacingRequest } : undefined),
 		check('cursor-setup-confirmation', 'Cursor setup confirmation', cursorSetupStatus(input), cursorSetupGuidance(input), input.cursorSetup ? { ...input.cursorSetup } : undefined),
-		check('model-compatibility-fallback', 'Model compatibility fallback', 'pass', modelWorkaroundGuidance(input.modelWorkaround), { decision: input.modelWorkaround ?? 'decide_later' }),
 		check('quick-tunnel', 'Quick Tunnel', input.tunnel.state === 'running' ? 'warn' : 'pass', input.tunnel.state === 'running' ? 'Quick Tunnel is temporary/testing and streaming remains unsupported or unverified.' : 'Quick Tunnel is not currently the active public route.', { ...input.tunnel }),
 		check('cloudflared-provisioning', 'cloudflared provisioning', input.cloudflaredProvision?.status && input.cloudflaredProvision.status !== 'ready' ? 'warn' : 'pass', cloudflaredProvisionGuidance(input.cloudflaredProvision), input.cloudflaredProvision ? { status: input.cloudflaredProvision.status, message: input.cloudflaredProvision.message, asset: input.cloudflaredProvision.asset?.name } : undefined),
 		check('openai-key-repair', 'OpenAI-key repair', openAiKeyRepairStatus(input.openAiKeyRepair), openAiKeyRepairGuidance(input.openAiKeyRepair), input.openAiKeyRepair),
@@ -141,16 +138,6 @@ function cursorSetupGuidance(input: DoctorReportInput): string {
 		return 'Cursor setup is confirmed, but no authenticated Cursor traffic has been detected yet.';
 	}
 	return 'Cursor setup is confirmed and authenticated Cursor traffic was observed.';
-}
-
-function modelWorkaroundGuidance(decision: ModelWorkaroundDecision | undefined): string {
-	if (decision === 'enabled') {
-		return 'Advanced fallback is enabled: gpt-5.4 routes upstream to gpt-5.5.';
-	}
-	if (decision === 'skipped') {
-		return 'Advanced fallback is skipped; direct Cursor model routing remains the normal path.';
-	}
-	return 'Advanced fallback is dormant and does not block Ready Setup while direct gpt-5.5 routing is verified.';
 }
 
 function openAiKeyRepairStatus(repair: DoctorReportInput['openAiKeyRepair']): DoctorCheck['status'] {

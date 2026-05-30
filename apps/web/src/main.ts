@@ -1,4 +1,4 @@
-import type { DoctorReport, ExtensionToDashboardMessage, ModelWorkaroundDecision, NotificationPreference, SetupState } from '@codex-auth-ext/shared';
+import type { DoctorReport, ExtensionToDashboardMessage, NotificationPreference, SetupState } from '@codex-auth-ext/shared';
 import App from './App.svelte';
 import {
 	copyCursorSetup,
@@ -12,7 +12,6 @@ import {
 	runDoctor,
 	setOpenAiKeyRepairDecision,
 	setNotificationPreference,
-	setModelWorkaroundDecision,
 	setStatusBarPreference,
 	signInCodex,
 	startQuickTunnel,
@@ -58,7 +57,6 @@ export function mountDashboardApp(target: HTMLElement, vscode: VsCodeWebviewApi 
 	let interactionState: DashboardInteractionState = createDashboardInteractionState(loadingStartedAt);
 	let optimisticStatusBarPreference: 'visible' | 'hidden' | null = null;
 	let optimisticNotificationPreference: NotificationPreference | null = null;
-	let optimisticModelWorkaroundDecision: ModelWorkaroundDecision | null = null;
 	let optimisticOpenAiKeyRepairDecision: 'enabled' | 'skipped' | 'disabled' | null = null;
 
 	const app = new App({
@@ -91,10 +89,6 @@ export function mountDashboardApp(target: HTMLElement, vscode: VsCodeWebviewApi 
 			onSetNotificationPreference: (preference: NotificationPreference) => {
 				optimisticNotificationPreference = preference;
 				dispatchAction('set_notification_preference', () => vscode && setNotificationPreference(vscode, preference));
-			},
-			onSetModelWorkaroundDecision: (decision: ModelWorkaroundDecision) => {
-				optimisticModelWorkaroundDecision = decision;
-				dispatchAction('set_model_workaround_decision', () => vscode && setModelWorkaroundDecision(vscode, decision));
 			},
 			onOpenCursorSettings: () => dispatchAction('open_cursor_settings', () => vscode && openCursorSettings(vscode)),
 			onStartQuickTunnel: () => dispatchAction('start_quick_tunnel', () => vscode && startQuickTunnel(vscode)),
@@ -198,12 +192,6 @@ export function mountDashboardApp(target: HTMLElement, vscode: VsCodeWebviewApi 
 		if (optimisticNotificationPreference && isActionPending(interactionState, 'set_notification_preference')) {
 			dashboard.preferences.notificationPreference = optimisticNotificationPreference;
 			dashboard.preferences.pendingNotificationPreference = optimisticNotificationPreference;
-		}
-		if (optimisticModelWorkaroundDecision && isActionPending(interactionState, 'set_model_workaround_decision')) {
-			dashboard.preferences.modelWorkaroundDecision = optimisticModelWorkaroundDecision;
-			dashboard.preferences.pendingModelWorkaroundDecision = optimisticModelWorkaroundDecision;
-			dashboard.setup.modelWorkaroundDecision = optimisticModelWorkaroundDecision;
-			dashboard.setup.pendingModelWorkaroundDecision = optimisticModelWorkaroundDecision;
 		}
 		if (optimisticOpenAiKeyRepairDecision && isActionPending(interactionState, 'set_openai_key_repair_decision')) {
 			dashboard.preferences.openAiKeyRepairDecision = optimisticOpenAiKeyRepairDecision;

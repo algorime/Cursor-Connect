@@ -124,12 +124,6 @@ function buildItems(input: ExtensionSetupStateInput): SetupChecklistItem[] {
 			guidance: publicReady ? 'Verified public URL reaches this runtime.' : 'Start Quick Tunnel or verify a durable HTTPS public URL.'
 		},
 		{
-			id: 'harness-workaround',
-			label: 'Model compatibility fallback',
-			status: input.modelWorkaround === 'decide_later' ? 'warning' : 'complete',
-			guidance: modelWorkaroundGuidance(input.modelWorkaround)
-		},
-		{
 			id: 'cursor-setup',
 			label: 'Cursor setup',
 			status: cursorReady ? 'complete' : publicReady ? 'active' : 'pending',
@@ -180,14 +174,4 @@ function hasCurrentSetupTraffic(input: ExtensionSetupStateInput): boolean {
 	return typeof lastTrafficAt === 'number'
 		&& typeof confirmedAt === 'number'
 		&& lastTrafficAt >= confirmedAt;
-}
-
-function modelWorkaroundGuidance(decision: ModelWorkaroundDecision): string {
-	if (decision === 'enabled') {
-		return 'Advanced fallback enabled: gpt-5.4 routes upstream to gpt-5.5.';
-	}
-	if (decision === 'skipped') {
-		return 'Advanced fallback skipped; direct Cursor model routing remains the normal path.';
-	}
-	return 'Dormant advanced fallback; not required for Ready while direct gpt-5.5 routing is verified.';
 }

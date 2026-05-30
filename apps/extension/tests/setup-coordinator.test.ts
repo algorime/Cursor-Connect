@@ -103,9 +103,8 @@ describe('SetupCoordinator', () => {
 		expect(await coordinator.setStatusBarPreference('hidden')).toMatchObject({ statusBarPreference: 'hidden' });
 		expect(await coordinator.setNotificationPreference('important_only')).toMatchObject({ notificationPreference: 'important_only' });
 		expect(await coordinator.setNotificationPreference('verbose')).toMatchObject({ notificationPreference: 'verbose' });
-		expect(await coordinator.setModelWorkaroundDecision('skipped')).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ id: 'harness-workaround', status: 'complete' })]) });
-		expect(restarts).toBe(1);
-		expect(await coordinator.copyCursorSetupValue('models')).toContain('skipped');
+		expect(restarts).toBe(0);
+		expect(await coordinator.copyCursorSetupValue('models')).not.toContain('Harness Routing Workaround');
 		expect(status).toMatchObject({ text: 'Codex: Tunnel' });
 	});
 

@@ -63,7 +63,6 @@ export function isSetupAffectingDashboardMessage(message: DashboardToExtensionMe
 		case 'dashboard.setOpenAiKeyRepairDecision':
 		case 'dashboard.setStatusBarPreference':
 		case 'dashboard.setNotificationPreference':
-		case 'dashboard.setModelWorkaroundDecision':
 		case 'dashboard.startQuickTunnel':
 		case 'dashboard.stopQuickTunnel':
 		case 'dashboard.restartQuickTunnel':

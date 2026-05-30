@@ -54,10 +54,6 @@
 				"title": "Codex Auth: Logout Codex"
 			},
 			{
-				"command": "codexAuthExt.enableGpt55Workaround",
-				"title": "Codex Auth: Enable GPT-5.5 Workaround"
-			},
-			{
 				"command": "codexAuthExt.copyExtensionBaseUrl",
 				"title": "Codex Auth: Copy Extension Base URL"
 			},
@@ -68,14 +64,6 @@
 			{
 				"command": "codexAuthExt.restartTunnel",
 				"title": "Codex Auth: Restart Quick Tunnel"
-			},
-			{
-				"command": "codexAuthExt.skipGpt55Workaround",
-				"title": "Codex Auth: Skip GPT-5.5 Workaround"
-			},
-			{
-				"command": "codexAuthExt.decideLaterGpt55Workaround",
-				"title": "Codex Auth: Decide on GPT-5.5 Workaround Later"
 			}
 		]
 	},

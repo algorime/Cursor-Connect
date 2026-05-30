@@ -11,7 +11,6 @@ export type DashboardActionKey =
 	| 'set_openai_key_repair_decision'
 	| 'set_status_bar_preference'
 	| 'set_notification_preference'
-	| 'set_model_workaround_decision'
 	| 'copy_full_setup'
 	| 'copy_base_url'
 	| 'copy_api_key'
@@ -79,7 +78,6 @@ const ACTIONS: Record<DashboardActionKey, DashboardActionMetadata> = {
 	set_openai_key_repair_decision: { key: 'set_openai_key_repair_decision', label: 'Update OpenAI-key repair', family: 'setup-affecting' },
 	set_status_bar_preference: { key: 'set_status_bar_preference', label: 'Update status bar preference', family: 'setup-affecting' },
 	set_notification_preference: { key: 'set_notification_preference', label: 'Update notification preference', family: 'setup-affecting' },
-	set_model_workaround_decision: { key: 'set_model_workaround_decision', label: 'Update model workaround', family: 'setup-affecting' },
 	copy_full_setup: { key: 'copy_full_setup', label: 'Copy full Cursor setup', family: 'read-sensitive-copy' },
 	copy_base_url: { key: 'copy_base_url', label: 'Copy Base URL', family: 'read-sensitive-copy' },
 	copy_api_key: { key: 'copy_api_key', label: 'Copy local API key', family: 'read-sensitive-copy' },

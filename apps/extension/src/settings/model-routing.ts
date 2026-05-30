@@ -7,11 +7,15 @@ export interface ExtensionStateStore {
 
 const ROUTING_WORKAROUND_KEY = 'codexAuthExt.routing.gpt54ToGpt55WorkaroundEnabled';
 const ROUTING_WORKAROUND_DECISION_KEY = 'codexAuthExt.routing.gpt54ToGpt55WorkaroundDecision';
+const ROUTING_WORKAROUND_RUNTIME_ENABLED = false;
 
 export class ModelRoutingSettingsStore {
 	constructor(private readonly state: ExtensionStateStore) {}
 
 	getGpt54ToGpt55WorkaroundDecision(): ModelWorkaroundDecision {
+		if (!ROUTING_WORKAROUND_RUNTIME_ENABLED) {
+			return 'skipped';
+		}
 		const decision = this.state.get<ModelWorkaroundDecision>(ROUTING_WORKAROUND_DECISION_KEY);
 		if (decision) {
 			return decision;
@@ -25,7 +29,7 @@ export class ModelRoutingSettingsStore {
 	}
 
 	getGpt54ToGpt55WorkaroundEnabled(): boolean {
-		return this.getGpt54ToGpt55WorkaroundDecision() === 'enabled';
+		return ROUTING_WORKAROUND_RUNTIME_ENABLED && this.getGpt54ToGpt55WorkaroundDecision() === 'enabled';
 	}
 
 	async setGpt54ToGpt55WorkaroundEnabled(enabled: boolean): Promise<void> {

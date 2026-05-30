@@ -239,11 +239,12 @@ describe('dashboard webview mount', () => {
 		const text = document.body.textContent ?? '';
 		expect(text).toContain('Visible');
 		expect(text).toContain('Balanced');
-		expect(text).toContain('Dormant');
+		expect(text).not.toContain('Model workaround');
+		expect(text).not.toContain('Dormant');
 		expect(text).toContain('Selected');
 		expect(text).not.toContain('important_only');
 		expect(text).not.toContain('decide_later');
-		expect(document.querySelectorAll('.choice-selected').length).toBeGreaterThanOrEqual(3);
+		expect(document.querySelectorAll('.choice-selected').length).toBeGreaterThanOrEqual(2);
 
 		buttonContaining('Important only')?.click();
 		await tick();

@@ -611,6 +611,34 @@ describe('/v1/chat/completions', () => {
 		expect(JSON.stringify(handle.usageStore.list())).not.toMatch(/synthetic fixture request|authorization|accessToken|email/i);
 	});
 
+	it('returns safe actionable messages for extension-reached upstream failures', async () => {
+		const handle = createReadyApiServer(undefined, async () => new Response('upstream unavailable', { status: 503 }));
+		const authResponder = answerNextAuthRequest(handle);
+
+		const response = await handle.app.inject({
+			method: 'POST',
+			url: '/v1/chat/completions',
+			headers: {
+				authorization: `Bearer ${localApiKey}`
+			},
+			payload: {
+				model: 'gpt-5.4',
+				stream: true,
+				input: [{ role: 'user', content: 'synthetic fixture request' }]
+			}
+		});
+		await authResponder;
+
+		expect(response.statusCode).toBe(502);
+		expect(response.json().error).toMatchObject({
+			type: 'provider',
+			code: 'upstream_http_503',
+			message: expect.stringMatching(/Codex upstream|try again|run the setup doctor/i)
+		});
+		expect(response.body).not.toContain('upstream unavailable');
+		expect(response.body).not.toContain('synthetic fixture request');
+	});
+
 	it('uses the real upstream HTTP path when no fake scenario is configured', async () => {
 		const handle = createReadyApiServer(undefined, async (_input, init) => {
 			expect(init?.method).toBe('POST');

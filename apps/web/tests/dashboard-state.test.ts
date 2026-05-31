@@ -225,6 +225,45 @@ describe('dashboard home view model', () => {
 		]);
 	});
 
+	it('guides stale Quick Tunnel users to restart the tunnel and update Cursor settings', () => {
+		const state: SetupState = {
+			generatedAt: 1,
+			environmentLabel: 'host',
+			statusBarPreference: 'visible',
+			notificationPreference: 'balanced',
+			modelWorkaroundDecision: 'enabled',
+			localTargetUrl: 'http://127.0.0.1:49152',
+			publicUrl: {
+				url: 'https://old.trycloudflare.com',
+				state: 'route_health_ok',
+				source: 'quick_tunnel',
+				temporary: true,
+				message: 'Quick Tunnel URL is stale or no longer resolvable by Cloudflare. Restart Quick Tunnel, copy the new Extension Base URL, and update Cursor settings.'
+			},
+			apiTraffic: createEmptyApiTrafficStatus(),
+			tunnel: createQuickTunnelStatus('exited', null, 'process exited'),
+			readiness: { state: 'setup', blockers: ['Public Extension Base URL'], warnings: [] },
+			items: [
+				{ id: 'runtime', label: 'Local API runtime', status: 'complete', guidance: 'ready' },
+				{ id: 'codex-auth', label: 'Codex authentication', status: 'complete', guidance: 'ready' },
+				{ id: 'public-url', label: 'Public Extension Base URL', status: 'active', guidance: 'restart tunnel' }
+			]
+		};
+
+		const view = buildDashboardViewModel(state);
+
+		expect(view.home.nextAction).toMatchObject({
+			id: 'start_quick_tunnel',
+			label: 'Restart Quick Tunnel',
+			description: expect.stringMatching(/copy.*Extension Base URL.*update Cursor/i)
+		});
+		expect(view.setup.commandCenter.route).toMatchObject({
+			title: 'Temporary Quick Tunnel is stale',
+			primaryLabel: 'Restart Quick Tunnel',
+			summary: expect.stringMatching(/update Cursor settings/i)
+		});
+	});
+
 	it('maps doctor reports into grouped diagnostic cards without raw JSON as the view model', () => {
 		const diagnostics = buildDiagnosticsViewModel({
 			generatedAt: 1,

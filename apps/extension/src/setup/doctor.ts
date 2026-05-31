@@ -80,6 +80,7 @@ function check(id: string, label: string, status: DoctorCheck['status'], guidanc
 }
 
 function guidanceForPublicUrlHealth(state: PublicUrlState): string {
+	if (isStaleQuickTunnel(state)) return 'Quick Tunnel URL is stale or no longer resolvable. Restart Quick Tunnel, copy the new Extension Base URL, and update Cursor settings.';
 	if (state.state === 'authenticated_ready' || state.state === 'route_health_ok') return 'Public route reached the extension /health endpoint.';
 	if (state.state === 'wrong_runtime') return 'Public route is live but points at a different extension-host runtime.';
 	if (state.state === 'wrong_key') return 'Public route is live but rejected the generated local API key.';
@@ -90,6 +91,7 @@ function guidanceForPublicUrlHealth(state: PublicUrlState): string {
 
 function guidanceForPublicUrlReady(state: PublicUrlState): string {
 	if (state.state === 'authenticated_ready') return 'Public URL is verified against the current runtime.';
+	if (isStaleQuickTunnel(state)) return 'Cursor may still be using an old temporary Extension Base URL. Restart Quick Tunnel, then update Cursor with the new /v1 URL.';
 	if (state.state === 'wrong_runtime') return 'Public URL points at a different extension-host runtime.';
 	if (state.state === 'wrong_key') return 'Public URL rejected the generated local API key.';
 	if (state.state === 'route_health_ok') return 'Public route is live but authenticated /ready is not ready.';
@@ -164,4 +166,11 @@ function cloudflaredProvisionGuidance(result: ProvisionResult | null): string {
 	if (!result) return 'cloudflared has not been provisioned in this setup session yet.';
 	if (result.status === 'ready') return 'cloudflared binary is verified in the extension cache.';
 	return result.message ?? `cloudflared provisioning failed: ${result.status}`;
+}
+
+function isStaleQuickTunnel(state: PublicUrlState): boolean {
+	return state.source === 'quick_tunnel'
+		&& state.temporary === true
+		&& state.state !== 'authenticated_ready'
+		&& /stale|no longer running|no longer resolvable|old Extension Base URL/i.test(state.message ?? '');
 }

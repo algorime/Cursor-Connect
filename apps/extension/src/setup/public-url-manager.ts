@@ -67,7 +67,7 @@ export class PublicUrlManager {
 		}
 		if (!health.ok || health.status !== 200 || health.body?.status !== 'ok') {
 			const suffix = health.status > 0 ? ` (HTTP ${health.status})` : '';
-			return this.persist({ url: normalized, state: 'unreachable', source, temporary, message: `Public URL did not return minimal /health${suffix}` });
+			return this.persist({ url: normalized, state: 'unreachable', source, temporary, message: health.safeMessage ?? `Public URL did not return minimal /health${suffix}` });
 		}
 
 		const ready = await this.fetchJson(`${normalized}/ready`, {
@@ -135,12 +135,16 @@ export class PublicUrlManager {
 		return state;
 	}
 
-	private async fetchJson(input: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: Record<string, unknown> | null; error?: 'timeout' | 'network' }> {
+	private async fetchJson(input: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: Record<string, unknown> | null; error?: 'timeout' | 'network'; safeMessage?: string }> {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 		try {
 			const response = await this.fetchImpl(input, { ...init, signal: init?.signal ?? controller.signal });
-			const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+			const text = await response.text().catch(() => '');
+			if (!looksJsonResponse(response, text)) {
+				return { ok: response.ok, status: response.status, body: null, safeMessage: classifyNonJsonPublicUrlResponse(text) };
+			}
+			const body = JSON.parse(text) as Record<string, unknown>;
 			return { ok: response.ok, status: response.status, body };
 		} catch (error) {
 			return { ok: false, status: 0, body: null, error: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network' };
@@ -163,4 +167,15 @@ function withPublicUrlDefaults(state: PublicUrlState): PublicUrlState {
 		source,
 		temporary: state.temporary ?? source === 'quick_tunnel'
 	};
+}
+
+function classifyNonJsonPublicUrlResponse(text: string): string | undefined {
+	if (/cloudflare tunnel error/i.test(text) && /\b1033\b/.test(text)) {
+		return 'Quick Tunnel URL is stale or no longer resolvable by Cloudflare. Restart Quick Tunnel, copy the new Extension Base URL, and update Cursor settings.';
+	}
+	return undefined;
+}
+
+function looksJsonResponse(response: Response, text: string): boolean {
+	return response.headers.get('content-type')?.includes('application/json') === true || /^[\s]*[{[]/.test(text);
 }

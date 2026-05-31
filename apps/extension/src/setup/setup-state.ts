@@ -92,7 +92,7 @@ function withEffectivePublicUrl(input: ExtensionSetupStateInput): ExtensionSetup
 		publicUrl: {
 			...input.publicUrl,
 			state: 'route_health_ok',
-			message: 'Quick Tunnel is no longer running for this temporary Public Route URL; restart Quick Tunnel before relying on this route.'
+			message: 'Quick Tunnel is no longer running for this temporary Public Route URL. Cursor may still be pointing at the old Extension Base URL; restart Quick Tunnel, copy the new Extension Base URL, and update Cursor settings.'
 		}
 	};
 }

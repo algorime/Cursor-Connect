@@ -11,6 +11,29 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('PublicUrlManager', () => {
+	it('reports Cloudflare 1033 Quick Tunnel HTML as a stale temporary route without storing the page', async () => {
+		const manager = new PublicUrlManager({
+			state: new InMemoryExtensionStateStore(),
+			fetchImpl: async () => new Response('<html><title>Cloudflare Tunnel error</title><h1>Error 1033</h1></html>', {
+				status: 530,
+				headers: { 'content-type': 'text/html' }
+			}),
+			getLocalApiKey: async () => 'local-key',
+			getExpectedRuntimeId: () => 'runtime-1'
+		});
+
+		const result = await manager.verify('https://dead.trycloudflare.com', { source: 'quick_tunnel' });
+
+		expect(result).toMatchObject({
+			url: 'https://dead.trycloudflare.com',
+			state: 'unreachable',
+			source: 'quick_tunnel',
+			temporary: true,
+			message: expect.stringMatching(/stale|restart Quick Tunnel|update Cursor settings/i)
+		});
+		expect(JSON.stringify(result)).not.toContain('<html>');
+	});
+
 	it('rejects non-HTTPS public URLs outside explicit tests', async () => {
 		const manager = new PublicUrlManager({
 			state: new InMemoryExtensionStateStore(),

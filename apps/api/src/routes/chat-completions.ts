@@ -248,9 +248,28 @@ function classifyThrownErrorCode(error: unknown): string {
 function openAiError(code: string, category: string): { error: { message: string; type: string; code: string } } {
 	return {
 		error: {
-			message: 'request failed',
+			message: safeErrorMessage(category),
 			type: category,
 			code
 		}
 	};
+}
+
+function safeErrorMessage(category: string): string {
+	switch (category) {
+		case 'service_not_ready':
+			return 'Codex proxy is not ready. Open the Codex Auth dashboard, run the setup doctor, and repair the highlighted setup step.';
+		case 'auth':
+			return 'Codex authentication is not ready. Recheck auth or sign in again from the Codex Auth dashboard.';
+		case 'quota':
+			return 'The active Codex account appears to be out of quota. Check Codex auth and account limits in the dashboard.';
+		case 'rate_limit':
+			return 'Codex is rate limiting requests. Wait briefly and try again.';
+		case 'invalid_request':
+			return 'Cursor sent a request shape this Codex proxy could not forward. Run the setup doctor if this continues.';
+		case 'provider':
+			return 'Codex upstream request failed. Try again, and run the setup doctor if the problem continues.';
+		default:
+			return 'Codex proxy request failed. Run the setup doctor if the problem continues.';
+	}
 }

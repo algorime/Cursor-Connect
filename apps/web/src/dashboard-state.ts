@@ -284,10 +284,13 @@ function buildNextAction(state: SetupState, blockingItem: SetupChecklistItem | n
 	}
 
 	if (itemStatus(state, 'public-url') !== 'complete') {
+		const staleQuickTunnel = isStaleQuickTunnel(state.publicUrl);
 		return {
 			id: state.tunnel.state === 'running' ? 'restart_quick_tunnel' : 'start_quick_tunnel',
-			label: state.tunnel.state === 'running' ? 'Restart Quick Tunnel' : 'Start Quick Tunnel',
-			description: 'Fast Start creates and verifies a temporary Extension Base URL before you copy values into Cursor.',
+			label: staleQuickTunnel || state.tunnel.state === 'running' ? 'Restart Quick Tunnel' : 'Start Quick Tunnel',
+			description: staleQuickTunnel
+				? 'Restart Quick Tunnel, copy the new Extension Base URL, and update Cursor settings before sending another request.'
+				: 'Fast Start creates and verifies a temporary Extension Base URL before you copy values into Cursor.',
 			primary: state.tunnel.state === 'running' ? 'restart_quick_tunnel' : 'start_quick_tunnel',
 			secondary: 'open_setup'
 		};
@@ -439,6 +442,7 @@ function buildRouteCommandCenter(state: SetupState): RouteCommandCenterViewModel
 	const publicRouteUrl = state.publicUrl.url;
 	const extensionBaseUrl = safeExtensionBaseUrl(publicRouteUrl);
 	const ready = state.publicUrl.state === 'authenticated_ready';
+	const staleQuickTunnel = isStaleQuickTunnel(state.publicUrl);
 	const hasRunningTunnel = state.tunnel.state === 'running';
 	const primaryAction: DashboardActionId = ready ? 'copy_base_url' : hasRunningTunnel ? 'restart_quick_tunnel' : 'start_quick_tunnel';
 	return {
@@ -448,7 +452,7 @@ function buildRouteCommandCenter(state: SetupState): RouteCommandCenterViewModel
 			? 'Public route reaches this extension runtime. Copy the /v1 Extension Base URL into Cursor.'
 			: state.publicUrl.message ?? 'Start Quick Tunnel for a fast temporary route or verify a durable Public Route URL.',
 		primaryAction,
-		primaryLabel: ready ? 'Copy Extension Base URL' : hasRunningTunnel ? 'Restart Quick Tunnel' : 'Start Quick Tunnel',
+		primaryLabel: ready ? 'Copy Extension Base URL' : staleQuickTunnel || hasRunningTunnel ? 'Restart Quick Tunnel' : 'Start Quick Tunnel',
 		secondaryAction: ready ? 'restart_quick_tunnel' : 'open_setup',
 		secondaryLabel: ready ? 'Restart Quick Tunnel' : 'Open durable setup',
 		canCopyBaseUrl: ready,
@@ -473,12 +477,20 @@ function safeExtensionBaseUrl(publicRouteUrl: string | null): string | null {
 }
 
 function routeTitle(publicUrl: PublicUrlState): string {
+	if (isStaleQuickTunnel(publicUrl)) return 'Temporary Quick Tunnel is stale';
 	if (publicUrl.state === 'wrong_runtime') return 'Route stale or wrong runtime';
 	if (publicUrl.state === 'wrong_key') return 'Route rejected local API key';
 	if (publicUrl.state === 'route_health_ok') return 'Route health OK, ready blocked';
 	if (publicUrl.state === 'timeout') return 'Route timed out';
 	if (publicUrl.state === 'unreachable') return 'Route unreachable';
 	return 'Public Route needed';
+}
+
+function isStaleQuickTunnel(publicUrl: PublicUrlState): boolean {
+	return publicUrl.source === 'quick_tunnel'
+		&& publicUrl.temporary === true
+		&& publicUrl.state !== 'authenticated_ready'
+		&& /stale|no longer running|no longer resolvable|old Extension Base URL/i.test(publicUrl.message ?? '');
 }
 
 function readableChecklistStatus(status: SetupChecklistItem['status']): string {

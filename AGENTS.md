@@ -31,8 +31,8 @@ This is a single-context repo: read root `CONTEXT.md` and root `docs/adr/`. See 
 
 Whenever a human will manually test extension behavior in Cursor (dashboard, commands, runtime, tunnel, auth flows), use the **installed extension in the main Cursor window**, not the F5 Extension Development Host. Do not assume an already-running window is running the latest code.
 
-1. From the repo root: `pnpm run extension:install` (build, package VSIX, install into Cursor).
-2. Command Palette → **Developer: Reload Window** (or restart Cursor) in the main window.
+1. The agent should run `pnpm run extension:install` from the repo root after extension changes that need manual verification.
+2. The human should only need to use Command Palette → **Developer: Reload Window** (or restart Cursor) in the main window.
 
 Skipping rebuild/reinstall/reload risks validating stale packaged assets (`dist/`, `api/bundle/`, `dashboard/`) from a prior build or install.
 

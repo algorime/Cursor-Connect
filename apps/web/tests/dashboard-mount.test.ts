@@ -70,6 +70,26 @@ describe('dashboard webview mount', () => {
 		expect(document.body.textContent).toContain('Configure Cursor with Codex');
 	});
 
+	it('restores the selected page after the webview remounts', async () => {
+		const webviewState: { value: unknown } = { value: null };
+		await mountDashboard([], webviewState);
+		postSetupState(makeSetupState());
+		await tick();
+
+		buttonByText('Setup')?.click();
+		await tick();
+		expect(document.body.textContent).toContain('Configure Cursor with Codex');
+
+		globalThis.__codexAuthDashboardTeardown?.();
+		document.body.innerHTML = '<div id="app"></div>';
+		vi.resetModules();
+		await mountDashboard([], webviewState);
+		postSetupState(makeSetupState());
+		await tick();
+
+		expect(document.body.textContent).toContain('Configure Cursor with Codex');
+	});
+
 	it('renders setup in deliberate order and sends full setup copy through the bridge without rendering secrets', async () => {
 		const messages: unknown[] = [];
 		await mountDashboard(messages);
@@ -380,10 +400,14 @@ describe('dashboard webview mount', () => {
 	});
 });
 
-async function mountDashboard(messages: unknown[]): Promise<void> {
+async function mountDashboard(messages: unknown[], webviewState: { value: unknown } = { value: null }): Promise<void> {
 	document.body.innerHTML = '<div id="app"></div>';
 	Reflect.set(globalThis, 'acquireVsCodeApi', () => ({
-		postMessage: (message: unknown) => messages.push(message)
+		postMessage: (message: unknown) => messages.push(message),
+		getState: () => webviewState.value,
+		setState: (value: unknown) => {
+			webviewState.value = value;
+		}
 	}));
 	await import('../src/main.js');
 }

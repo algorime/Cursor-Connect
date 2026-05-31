@@ -93,7 +93,8 @@ export function mountDashboardApp(target: HTMLElement, vscode: VsCodeWebviewApi 
 			onOpenCursorSettings: () => dispatchAction('open_cursor_settings', () => vscode && openCursorSettings(vscode)),
 			onStartQuickTunnel: () => dispatchAction('start_quick_tunnel', () => vscode && startQuickTunnel(vscode)),
 			onStopQuickTunnel: () => dispatchAction('stop_quick_tunnel', () => vscode && stopQuickTunnel(vscode)),
-			onRestartQuickTunnel: () => dispatchAction('restart_quick_tunnel', () => vscode && restartQuickTunnel(vscode))
+			onRestartQuickTunnel: () => dispatchAction('restart_quick_tunnel', () => vscode && restartQuickTunnel(vscode)),
+			vscode
 		}
 	});
 

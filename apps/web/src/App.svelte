@@ -5,6 +5,7 @@
 	import HomePage from './pages/HomePage.svelte';
 	import PreferencesPage from './pages/PreferencesPage.svelte';
 	import SetupPage from './pages/SetupPage.svelte';
+	import type { VsCodeWebviewApi } from './bridge.js';
 	import type { DashboardActionId, DashboardPageId, DashboardViewModel } from './dashboard-state.js';
 	import {
 		createDashboardInteractionState,
@@ -42,8 +43,9 @@
 	export let onStartQuickTunnel: () => void = () => undefined;
 	export let onStopQuickTunnel: () => void = () => undefined;
 	export let onRestartQuickTunnel: () => void = () => undefined;
+	export let vscode: VsCodeWebviewApi | null = null;
 
-	let activePage: DashboardPageId = 'home';
+	let activePage: DashboardPageId = restoreActivePage(vscode);
 	let publicUrl = '';
 
 	$: if (dashboard && !dashboard.nav.some((item) => item.id === activePage && !item.disabled)) {
@@ -53,7 +55,29 @@
 	function selectPage(page: DashboardPageId): void {
 		if (dashboard?.nav.find((item) => item.id === page && !item.disabled)) {
 			activePage = page;
+			persistActivePage(vscode, activePage);
 		}
+	}
+
+	function restoreActivePage(api: VsCodeWebviewApi | null): DashboardPageId {
+		const state = api?.getState?.();
+		return isDashboardWebviewState(state) ? state.activePage : 'home';
+	}
+
+	function persistActivePage(api: VsCodeWebviewApi | null, page: DashboardPageId): void {
+		const state = api?.getState?.();
+		const nextState = isRecord(state) ? { ...state, activePage: page } : { activePage: page };
+		api?.setState?.(nextState);
+	}
+
+	function isDashboardWebviewState(value: unknown): value is { activePage: DashboardPageId } {
+		return isRecord(value)
+			&& typeof value.activePage === 'string'
+			&& ['home', 'setup', 'diagnostics', 'preferences'].includes(value.activePage);
+	}
+
+	function isRecord(value: unknown): value is Record<string, unknown> {
+		return typeof value === 'object' && value !== null;
 	}
 
 	function handleAction(id: string): void {

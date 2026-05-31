@@ -2,6 +2,8 @@ import type { DashboardToExtensionMessage, ExtensionToDashboardMessage, ModelWor
 
 export interface VsCodeWebviewApi {
 	postMessage(message: DashboardToExtensionMessage): void;
+	getState?(): unknown;
+	setState?(state: unknown): void;
 }
 
 export function requestSetupState(vscode: VsCodeWebviewApi, requestId: string = crypto.randomUUID()): string {

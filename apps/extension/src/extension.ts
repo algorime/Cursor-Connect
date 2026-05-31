@@ -178,6 +178,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				vscode.ViewColumn.One,
 				{
 					enableScripts: true,
+					retainContextWhenHidden: true,
 					localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dashboard')]
 				}
 			);

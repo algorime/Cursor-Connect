@@ -26,3 +26,14 @@ Use the default five-label triage vocabulary: `needs-triage`, `needs-info`, `rea
 ### Domain docs
 
 This is a single-context repo: read root `CONTEXT.md` and root `docs/adr/`. See `docs/agents/domain.md`.
+
+### Human testing (extension)
+
+Whenever a human will manually test extension behavior in Cursor (dashboard, commands, runtime, tunnel, auth flows), use the **installed extension in the main Cursor window**, not the F5 Extension Development Host. Do not assume an already-running window is running the latest code.
+
+1. From the repo root: `pnpm run extension:install` (build, package VSIX, install into Cursor).
+2. Command Palette → **Developer: Reload Window** (or restart Cursor) in the main window.
+
+Skipping rebuild/reinstall/reload risks validating stale packaged assets (`dist/`, `api/bundle/`, `dashboard/`) from a prior build or install.
+
+**Secondary only — F5 / Extension Development Host:** `.vscode/launch.json` **Run Codex Auth Extension** opens a separate window that loads the extension from `apps/extension` via `--extensionDevelopmentPath` (no VSIX). Use only for extension-host debugging (breakpoints, activation traces, faster edit-reload when packaging is not the question). It is not a substitute for human acceptance testing in the main window.

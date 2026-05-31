@@ -12,6 +12,7 @@
 		"test": "pnpm run build && pnpm -r run test",
 		"typecheck": "pnpm --filter @codex-auth-ext/shared build && pnpm --filter @codex-auth-ext/api build && pnpm -r run typecheck",
 		"lint": "pnpm --filter @codex-auth-ext/shared build && pnpm -r run lint",
-		"smoke": "pnpm run build && node --test scripts/smoke/runtime-spawn.test.mjs"
+		"smoke": "pnpm run build && node --test scripts/smoke/runtime-spawn.test.mjs",
+		"extension:install": "node scripts/extension-install.mjs"
 	}
 }

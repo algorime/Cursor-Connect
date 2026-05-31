@@ -1,0 +1,47 @@
+{
+  "capture_id": "20260524-180636-cf145060",
+  "analysis": {
+    "request_shape": "responses"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer...",
+      "user-agent": "Cursor/1.0"
+    },
+    "body_json": {
+      "model": "gpt-5.4",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "role": "system",
+          "content": "You are GPT-5.4."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "synthetic harness probe"
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "cursorConversationId": "6b1a468c-a86c-4d4e-9770-6f68a0e50f15"
+      },
+      "reasoning": {
+        "effort": "medium",
+        "summary": "auto"
+      },
+      "prompt_cache_retention": "24h",
+      "stream_options": {
+        "include_usage": true
+      },
+      "user": "synthetic-fixture-user"
+    }
+  }
+}

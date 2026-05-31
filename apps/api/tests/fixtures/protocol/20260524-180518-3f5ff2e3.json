@@ -1,0 +1,26 @@
+{
+  "capture_id": "20260524-180518-3f5ff2e3",
+  "analysis": {
+    "request_shape": "chat_completions"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer...",
+      "user-agent": "curl/8.0"
+    },
+    "body_json": {
+      "model": "gpt-5.4",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": "public harness smoke"
+        }
+      ],
+      "stream_options": {
+        "include_usage": true
+      },
+      "user": "synthetic-fixture-user"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+event: response.output_item.added
+data: {"item":{"type":"function_call","call_id":"call_redacted","name":"REDACTED","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"delta":"{\"input\":\"synthetic\"}"}
+
+event: response.completed
+data: {"response":{"usage":null}}
+
+data: [DONE]
+

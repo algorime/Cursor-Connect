@@ -1,0 +1,46 @@
+{
+  "capture_id": "20260524-180723-3f16d29e",
+  "analysis": {
+    "request_shape": "responses"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer...",
+      "user-agent": "Cursor/1.0"
+    },
+    "body_json": {
+      "model": "gpt-5.4-mini",
+      "stream": true,
+      "store": false,
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "input": [
+        {
+          "role": "system",
+          "content": "You are GPT-5.4 Mini."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "synthetic mini harness probe"
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "cursorConversationId": "97ab7a9d-89ee-4d30-9430-ae140f5c8f60"
+      },
+      "reasoning": {
+        "effort": "medium",
+        "summary": "auto"
+      },
+      "stream_options": {
+        "include_usage": true
+      },
+      "user": "synthetic-fixture-user"
+    }
+  }
+}

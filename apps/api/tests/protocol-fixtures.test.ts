@@ -12,11 +12,7 @@ import { superviseResponsesEvents } from '../src/protocol/responses-stream-super
 import { InMemoryUsageStore } from '../src/usage/usage-store.js';
 
 const repoRoot = path.resolve(__dirname, '../../..');
-const capturesRoot = path.join(repoRoot, 'harness-capture/captures');
-const cursorAzureSourceRecordingsRoot = path.join(
-	repoRoot,
-	'.sources/cursor-azure-proxy/tests/recordings'
-);
+const protocolFixturesRoot = path.join(repoRoot, 'apps/api/tests/fixtures/protocol');
 
 const captures = {
 	gpt54: '20260524-180636-cf145060.json',
@@ -549,7 +545,7 @@ describe('Responses SSE parsing', () => {
 	it('adapts a recorded cursor-azure single tool-call stream into Cursor-safe chunks', () => {
 		const events = parseSseEvents(
 			fs.readFileSync(
-				path.join(cursorAzureSourceRecordingsRoot, 'reply_single_tool_call/upstream_response.sse'),
+				path.join(protocolFixturesRoot, 'reply_single_tool_call.upstream_response.sse'),
 				'utf8'
 			)
 		);
@@ -579,7 +575,7 @@ describe('Responses SSE parsing', () => {
 	it('adapts a recorded stream without closing newlines to a completed text response', () => {
 		const events = parseSseEvents(
 			fs.readFileSync(
-				path.join(cursorAzureSourceRecordingsRoot, 'sse_without_closing_new_lines/upstream_response.sse'),
+				path.join(protocolFixturesRoot, 'sse_without_closing_new_lines.upstream_response.sse'),
 				'utf8'
 			)
 		);
@@ -708,5 +704,5 @@ function readCapture(fileName: string): Capture {
 }
 
 function readCaptureRaw(fileName: string): string {
-	return fs.readFileSync(path.join(capturesRoot, fileName), 'utf8');
+	return fs.readFileSync(path.join(protocolFixturesRoot, fileName), 'utf8');
 }

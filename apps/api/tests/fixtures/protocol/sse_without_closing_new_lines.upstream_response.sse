@@ -1,0 +1,5 @@
+event: response.output_text.delta
+data: {"delta":"pong"}
+
+event: response.completed
+data: {"response":{"usage":{"input_tokens":8400,"output_tokens":117,"total_tokens":8517,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}}}}

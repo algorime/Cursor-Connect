@@ -1,0 +1,30 @@
+{
+  "capture_id": "20260524-181130-50655fd6",
+  "analysis": {
+    "request_shape": "chat_completions"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer...",
+      "user-agent": "Cursor/1.0"
+    },
+    "body_json": {
+      "model": "custom",
+      "stream": true,
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an AI coding assistant, powered by custom."
+        },
+        {
+          "role": "user",
+          "content": "synthetic custom diagnostic probe"
+        }
+      ],
+      "stream_options": {
+        "include_usage": true
+      },
+      "user": "synthetic-fixture-user"
+    }
+  }
+}

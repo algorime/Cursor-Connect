@@ -41,11 +41,22 @@ describe('existing harness captures', () => {
 });
 
 describe('model policy', () => {
-	it('keeps Cursor-Facing and Upstream Model IDs distinct for the explicit workaround', () => {
+	it('keeps verified Cursor routing separate from current Codex upstream availability', () => {
 		const models = listSupportedModels({ gpt54ToGpt55WorkaroundEnabled: true });
 		const recommended = models.find((model) => model.id === 'gpt-5.5');
+		const sol = models.find((model) => model.id === 'gpt-5.6-sol');
+		const terra = models.find((model) => model.id === 'gpt-5.6-terra');
+		const luna = models.find((model) => model.id === 'gpt-5.6-luna');
 		const fallback = models.find((model) => model.id === 'gpt-5.4');
 
+		expect(models.map((model) => model.id)).toEqual([
+			'gpt-5.5',
+			'gpt-5.6-sol',
+			'gpt-5.6-terra',
+			'gpt-5.6-luna',
+			'gpt-5.4-mini',
+			'gpt-5.4'
+		]);
 		expect(recommended).toMatchObject({
 			id: 'gpt-5.5',
 			upstreamModelId: 'gpt-5.5',
@@ -53,6 +64,13 @@ describe('model policy', () => {
 			workaroundRequired: false,
 			policyState: 'ready'
 		});
+		for (const currentModel of [sol, terra, luna]) {
+			expect(currentModel).toMatchObject({
+				recommended: false,
+				workaroundRequired: false,
+				policyState: 'routing_not_verified'
+			});
+		}
 		expect(fallback).toMatchObject({
 			id: 'gpt-5.4',
 			upstreamModelId: 'gpt-5.5',
@@ -146,6 +164,82 @@ describe('Cursor request adapter', () => {
 		expect(adapted.route.upstreamModelId).toBe(expectedUpstreamModel);
 		expect(adapted.upstreamRequest.model).toBe(expectedUpstreamModel);
 		expect(adapted.upstreamRequest.reasoning).toEqual(body.reasoning);
+	});
+
+	it('preserves current Codex reasoning, verbosity, and output controls', () => {
+		const adapted = adaptCursorRequestToCodexResponses(
+			{
+				model: 'gpt-5.6-sol',
+				stream: true,
+				messages: [{ role: 'user', content: 'current model settings probe' }],
+				reasoning: { effort: 'max', summary: 'auto' },
+				verbosity: 'high',
+				max_output_tokens: 4096
+			},
+			{ gpt54ToGpt55WorkaroundEnabled: false }
+		);
+
+		expect(adapted.ok).toBe(true);
+		if (!adapted.ok) {
+			return;
+		}
+
+		expect(adapted.route).toEqual({
+			cursorFacingModelId: 'gpt-5.6-sol',
+			upstreamModelId: 'gpt-5.6-sol',
+			policyState: 'routing_not_verified'
+		});
+		expect(adapted.upstreamRequest).toMatchObject({
+			model: 'gpt-5.6-sol',
+			reasoning: { effort: 'max', summary: 'auto' },
+			text: { verbosity: 'high' },
+			max_output_tokens: 4096,
+			parallel_tool_calls: true,
+			store: false
+		});
+	});
+
+	it('translates Chat Completions image content for current multimodal Codex models', () => {
+		const adapted = adaptCursorRequestToCodexResponses(
+			{
+				model: 'gpt-5.6-luna',
+				messages: [
+					{
+						role: 'user',
+						content: [
+							{ type: 'text', text: 'Describe this image.' },
+							{
+								type: 'image_url',
+								image_url: {
+									url: 'data:image/png;base64,AAAA',
+									detail: 'high'
+								}
+							}
+						]
+					}
+				]
+			},
+			{ gpt54ToGpt55WorkaroundEnabled: false }
+		);
+
+		expect(adapted.ok).toBe(true);
+		if (!adapted.ok) {
+			return;
+		}
+
+		expect(adapted.upstreamRequest.input).toEqual([
+			{
+				role: 'user',
+				content: [
+					{ type: 'input_text', text: 'Describe this image.' },
+					{
+						type: 'input_image',
+						image_url: 'data:image/png;base64,AAAA',
+						detail: 'high'
+					}
+				]
+			}
+		]);
 	});
 
 	it('adapts captured gpt-5.4 Responses-shaped requests to Codex Responses', () => {
@@ -448,6 +542,60 @@ describe('fake Codex upstream stream fixtures', () => {
 		expect(result.chunks.at(-1)?.choices[0].finish_reason).toBe('tool_calls');
 		expect(result.finishReason).toBe('tool_calls');
 		expect(JSON.stringify(result.chunks)).not.toContain('"type":"function_call"');
+		expect(result.error).toBeNull();
+	});
+
+	it('correlates interleaved tool argument deltas by item and output index', () => {
+		const result = superviseResponsesEvents(
+			[
+				{
+					type: 'response.output_item.added',
+					output_index: 2,
+					item: {
+						type: 'function_call',
+						id: 'item_2',
+						call_id: 'call_2',
+						name: 'Read',
+						arguments: ''
+					}
+				},
+				{
+					type: 'response.output_item.added',
+					output_index: 1,
+					item: {
+						type: 'function_call',
+						id: 'item_1',
+						call_id: 'call_1',
+						name: 'Shell',
+						arguments: ''
+					}
+				},
+				{
+					type: 'response.function_call_arguments.delta',
+					item_id: 'item_2',
+					output_index: 2,
+					sequence_number: 4,
+					delta: '{"path":"a"}'
+				},
+				{
+					type: 'response.function_call_arguments.delta',
+					item_id: 'item_1',
+					output_index: 1,
+					sequence_number: 5,
+					delta: '{"cmd":"pwd"}'
+				},
+				{ type: 'response.completed', response: { status: 'completed', usage: null } }
+			],
+			{ model: 'gpt-5.6-sol', created: 1, id: 'chatcmpl-test' }
+		);
+
+		expect(result.chunks[2].choices[0].delta).toEqual({
+			tool_calls: [{ index: 0, function: { arguments: '{"path":"a"}' } }]
+		});
+		expect(result.chunks[3].choices[0].delta).toEqual({
+			tool_calls: [{ index: 1, function: { arguments: '{"cmd":"pwd"}' } }]
+		});
+		expect(result.finishReason).toBe('tool_calls');
 		expect(result.error).toBeNull();
 	});
 

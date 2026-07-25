@@ -456,13 +456,26 @@ describe('/v1/models', () => {
 		const body = response.json();
 
 		expect(response.statusCode).toBe(200);
-		expect(body.data.map((model: { id: string }) => model.id)).toEqual(['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4']);
+		expect(body.data.map((model: { id: string }) => model.id)).toEqual([
+			'gpt-5.5',
+			'gpt-5.6-sol',
+			'gpt-5.6-terra',
+			'gpt-5.6-luna',
+			'gpt-5.4-mini',
+			'gpt-5.4'
+		]);
 		expect(JSON.stringify(body)).not.toMatch(/custom|account|path|secret/i);
 		expect(body.data[0]).toMatchObject({
 			id: 'gpt-5.5',
 			upstreamModelId: 'gpt-5.5',
 			recommended: true,
 			policyState: 'ready'
+		});
+		expect(body.data.find((model: { id: string }) => model.id === 'gpt-5.6-sol')).toMatchObject({
+			upstreamModelId: 'gpt-5.6-sol',
+			recommended: false,
+			policyState: 'routing_not_verified',
+			workaroundRequired: false
 		});
 		expect(body.data.find((model: { id: string }) => model.id === 'gpt-5.4')).toMatchObject({
 			upstreamModelId: 'gpt-5.5',
@@ -491,7 +504,14 @@ describe('/v1/models', () => {
 		const body = response.json();
 
 		expect(response.statusCode).toBe(200);
-		expect(body.data.map((model: { id: string }) => model.id)).toEqual(['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4']);
+		expect(body.data.map((model: { id: string }) => model.id)).toEqual([
+			'gpt-5.5',
+			'gpt-5.6-sol',
+			'gpt-5.6-terra',
+			'gpt-5.6-luna',
+			'gpt-5.4-mini',
+			'gpt-5.4'
+		]);
 		expect(body.data[0]).toMatchObject({
 			id: 'gpt-5.5',
 			upstreamModelId: 'gpt-5.5',

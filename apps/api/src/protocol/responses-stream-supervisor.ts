@@ -30,6 +30,8 @@ export class ResponsesStreamSupervisor {
 	private errorValue: StreamSupervisorResult['error'] = null;
 	private doneValue = false;
 	private toolCalls = 0;
+	private readonly toolCallIndexesByItemId = new Map<string, number>();
+	private readonly toolCallIndexesByOutputIndex = new Map<number, number>();
 
 	constructor(private readonly options: SupervisorOptions) {
 		this.id = options.id ?? 'chatcmpl-fixture';
@@ -64,6 +66,7 @@ export class ResponsesStreamSupervisor {
 				const item = event.item;
 				const index = this.toolCalls;
 				this.toolCalls += 1;
+				this.rememberToolCallIndex(event, item, index);
 				this.chunks.push(
 					makeChunk(
 						this.id,
@@ -92,7 +95,8 @@ export class ResponsesStreamSupervisor {
 		}
 
 		if (type === 'response.function_call_arguments.delta' || type === 'response.custom_tool_call_input.delta' || type === 'response.mcp_call_arguments.delta') {
-			if (this.toolCalls > 0) {
+			const index = this.findToolCallIndex(event);
+			if (index !== null) {
 				this.chunks.push(
 					makeChunk(
 						this.id,
@@ -101,7 +105,7 @@ export class ResponsesStreamSupervisor {
 						{
 							tool_calls: [
 								{
-									index: this.toolCalls - 1,
+									index,
 									function: {
 										arguments: stringField(event.delta)
 									}
@@ -191,6 +195,41 @@ export class ResponsesStreamSupervisor {
 		}
 
 		return this.chunks.slice(chunkStart);
+	}
+
+	private rememberToolCallIndex(
+		event: Record<string, unknown>,
+		item: Record<string, unknown>,
+		index: number
+	): void {
+		for (const id of [stringField(item.id), stringField(item.call_id), stringField(event.item_id)]) {
+			if (id) {
+				this.toolCallIndexesByItemId.set(id, index);
+			}
+		}
+
+		if (typeof event.output_index === 'number' && Number.isInteger(event.output_index)) {
+			this.toolCallIndexesByOutputIndex.set(event.output_index, index);
+		}
+	}
+
+	private findToolCallIndex(event: Record<string, unknown>): number | null {
+		const itemId = stringField(event.item_id);
+		if (itemId) {
+			const index = this.toolCallIndexesByItemId.get(itemId);
+			if (index !== undefined) {
+				return index;
+			}
+		}
+
+		if (typeof event.output_index === 'number' && Number.isInteger(event.output_index)) {
+			const index = this.toolCallIndexesByOutputIndex.get(event.output_index);
+			if (index !== undefined) {
+				return index;
+			}
+		}
+
+		return this.toolCalls > 0 ? this.toolCalls - 1 : null;
 	}
 
 	snapshot(): StreamSupervisorResult {

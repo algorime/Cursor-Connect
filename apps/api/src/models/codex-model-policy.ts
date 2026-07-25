@@ -17,10 +17,25 @@ export interface ResolvedModelRoute {
 	policyState: ModelPolicyState;
 }
 
+const DEFAULT_CURSOR_MODEL_IDS = [
+	'gpt-5.5',
+	'gpt-5.6-sol',
+	'gpt-5.6-terra',
+	'gpt-5.6-luna',
+	'gpt-5.4-mini',
+	'gpt-5.4'
+] as const;
+
+const CODEX_UPSTREAM_AVAILABLE_CURSOR_UNVERIFIED: Record<string, true> = {
+	'gpt-5.6-sol': true,
+	'gpt-5.6-terra': true,
+	'gpt-5.6-luna': true
+};
+
 export function listSupportedModels(settings: ModelRoutingSettings): CodexModelEntry[] {
 	const supportedModelIds = settings.supportedModelIds?.length
 		? settings.supportedModelIds
-		: ['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4'];
+		: DEFAULT_CURSOR_MODEL_IDS;
 	const models = supportedModelIds.map((modelId) => resolveModelRoute(modelId, settings));
 
 	if (models.some((model) => !model)) {
@@ -73,6 +88,14 @@ export function resolveModelRoute(
 			cursorFacingModelId: 'gpt-5.4-mini',
 			upstreamModelId: 'gpt-5.4-mini',
 			policyState: 'ready'
+		};
+	}
+
+	if (CODEX_UPSTREAM_AVAILABLE_CURSOR_UNVERIFIED[model]) {
+		return {
+			cursorFacingModelId: model,
+			upstreamModelId: model,
+			policyState: 'routing_not_verified'
 		};
 	}
 

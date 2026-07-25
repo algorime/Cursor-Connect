@@ -59,9 +59,24 @@ test('extension-staged api bundle starts and verifies packaged model routing', a
 		expectedUpstreamModel: 'gpt-5.5',
 		reasoning: { effort: 'low', summary: 'auto' }
 	});
+	await runPackagedApiProbe({
+		workaroundEnabled: false,
+		cursorModel: 'gpt-5.6-sol',
+		expectedUpstreamModel: 'gpt-5.6-sol',
+		reasoning: { effort: 'max', summary: 'auto' },
+		verbosity: 'high',
+		maxOutputTokens: 4096
+	});
 });
 
-async function runPackagedApiProbe({ workaroundEnabled, cursorModel, expectedUpstreamModel, reasoning }) {
+async function runPackagedApiProbe({
+	workaroundEnabled,
+	cursorModel,
+	expectedUpstreamModel,
+	reasoning,
+	verbosity,
+	maxOutputTokens
+}) {
 	const port = await getFreePort();
 	const localApiKey = 'smoke-local-api-key';
 	const internalControlSecret = 'smoke-internal-control-secret';
@@ -137,7 +152,14 @@ async function runPackagedApiProbe({ workaroundEnabled, cursorModel, expectedUps
 		});
 		const modelsBody = await models.json();
 		assert.equal(models.status, 200);
-		assert.deepEqual(modelsBody.data.map((model) => model.id), ['gpt-5.5', 'gpt-5.4-mini', 'gpt-5.4']);
+		assert.deepEqual(modelsBody.data.map((model) => model.id), [
+			'gpt-5.5',
+			'gpt-5.6-sol',
+			'gpt-5.6-terra',
+			'gpt-5.6-luna',
+			'gpt-5.4-mini',
+			'gpt-5.4'
+		]);
 
 		const chat = await fetch(`${baseUrl}/v1/chat/completions`, {
 			method: 'POST',
@@ -150,6 +172,8 @@ async function runPackagedApiProbe({ workaroundEnabled, cursorModel, expectedUps
 				stream: true,
 				input: [{ role: 'user', content: 'synthetic smoke prompt' }],
 				reasoning,
+				...(verbosity ? { verbosity } : {}),
+				...(maxOutputTokens ? { max_output_tokens: maxOutputTokens } : {}),
 				metadata: {
 					cursorConversationId: `smoke-routing-${cursorModel}-${workaroundEnabled ? 'enabled' : 'disabled'}`
 				}
@@ -165,6 +189,12 @@ async function runPackagedApiProbe({ workaroundEnabled, cursorModel, expectedUps
 		assert.equal(upstream.requests[0].method, 'POST');
 		assert.equal(upstream.requests[0].body.model, expectedUpstreamModel);
 		assert.deepEqual(upstream.requests[0].body.reasoning, reasoning);
+		if (verbosity) {
+			assert.deepEqual(upstream.requests[0].body.text, { verbosity });
+		}
+		if (maxOutputTokens) {
+			assert.equal(upstream.requests[0].body.max_output_tokens, maxOutputTokens);
+		}
 		assert.equal(upstream.requests[0].body.prompt_cache_key, `smoke-routing-${cursorModel}-${workaroundEnabled ? 'enabled' : 'disabled'}`);
 		assert.equal(Object.hasOwn(upstream.requests[0].body, 'metadata'), false);
 

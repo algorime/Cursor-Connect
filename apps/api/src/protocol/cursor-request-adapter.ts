@@ -4,7 +4,6 @@ import { resolveModelRoute, type ModelRoutingSettings, type ResolvedModelRoute }
 
 const CODEX_RESPONSES_UNSUPPORTED_PARAMS = new Set([
 	'frequency_penalty',
-	'max_output_tokens',
 	'max_tokens',
 	'presence_penalty',
 	'temperature',
@@ -82,6 +81,14 @@ function responsesPassthrough(payload: Record<string, unknown>): Record<string, 
 	delete out.metadata;
 	delete out.user;
 	delete out.prompt_cache_retention;
+	if (
+		!isRecord(out.text) &&
+		(out.verbosity === 'low' || out.verbosity === 'medium' || out.verbosity === 'high')
+	) {
+		out.text = { verbosity: out.verbosity };
+	}
+	delete out.verbosity;
+
 
 	for (const key of CODEX_RESPONSES_UNSUPPORTED_PARAMS) {
 		delete out[key];
@@ -227,6 +234,22 @@ function chatCompletionsToResponses(payload: Record<string, unknown>): Record<st
 	if (isRecord(payload.reasoning)) {
 		out.reasoning = payload.reasoning;
 	}
+	if (isRecord(payload.text)) {
+		out.text = payload.text;
+	} else if (
+		payload.verbosity === 'low' ||
+		payload.verbosity === 'medium' ||
+		payload.verbosity === 'high'
+	) {
+		out.text = { verbosity: payload.verbosity };
+	}
+	if (
+		typeof payload.max_output_tokens === 'number' &&
+		Number.isFinite(payload.max_output_tokens) &&
+		payload.max_output_tokens > 0
+	) {
+		out.max_output_tokens = payload.max_output_tokens;
+	}
 	if (Array.isArray(payload.include)) {
 		out.include = payload.include;
 	}
@@ -298,6 +321,25 @@ function normalizeContentPart(part: Record<string, unknown>, role: unknown): Rec
 			type: role === 'assistant' ? 'output_text' : 'input_text',
 			text: String(part.text ?? '')
 		};
+	}
+
+	if (type === 'image_url' && role === 'user') {
+		const image = part.image_url;
+		if (typeof image === 'string' && image) {
+			return {
+				type: 'input_image',
+				image_url: image
+			};
+		}
+		if (isRecord(image) && typeof image.url === 'string' && image.url) {
+			return {
+				type: 'input_image',
+				image_url: image.url,
+				...(image.detail === 'low' || image.detail === 'high' || image.detail === 'auto'
+					? { detail: image.detail }
+					: {})
+			};
+		}
 	}
 
 	return { ...part };
